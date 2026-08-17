@@ -1,0 +1,224 @@
+@import '@fontsource-variable/noto-sans-sc';
+@import 'tailwindcss' source('../app');
+
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark, corporate, cupcake, nord, synthwave;
+}
+
+@theme {
+  /* WorkBuddy 字体栈：PingFang 覆盖 macOS，Noto Sans SC 内嵌兜底 Windows 中文 */
+  --font-sans: 'PingFang SC', 'Noto Sans SC Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* daisyUI 的 data-theme 驱动暗色模式，dark: 变体随之生效 */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/* ---------- 浅色主题：WorkBuddy 色板（青绿品牌 + 中性灰底） ---------- */
+@plugin "daisyui/theme" {
+  name: 'light';
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: #ffffff;
+  --color-base-200: #fafafa;
+  --color-base-300: #f2f2f2;
+  --color-base-content: #000000;
+  --color-primary: #00c29a;
+  --color-primary-content: #ffffff;
+  --color-secondary: #4ecba0;
+  --color-secondary-content: #06251d;
+  --color-accent: #2563eb;
+  --color-accent-content: #ffffff;
+  --color-neutral: #262626;
+  --color-neutral-content: #fafafa;
+  --color-info: #2563eb;
+  --color-info-content: #ffffff;
+  --color-success: #0cbf5b;
+  --color-success-content: #ffffff;
+  --color-warning: #ff7800;
+  --color-warning-content: #3a1a00;
+  --color-error: #f64041;
+  --color-error-content: #ffffff;
+
+  /* WorkBuddy 圆角：控件 6-8px、卡片 12px */
+  --radius-selector: 0.375rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* ---------- 深色主题：WorkBuddy dark 色板 ---------- */
+@plugin "daisyui/theme" {
+  name: 'dark';
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: #1f1f1f;
+  --color-base-200: #141414;
+  --color-base-300: #262626;
+  --color-base-content: #ffffff;
+  --color-primary: #22cba8;
+  --color-primary-content: #06251d;
+  --color-secondary: #4ecba0;
+  --color-secondary-content: #06251d;
+  --color-accent: #4d80ef;
+  --color-accent-content: #ffffff;
+  --color-neutral: #3a3a3a;
+  --color-neutral-content: #ffffff;
+  --color-info: #4d80ef;
+  --color-info-content: #ffffff;
+  --color-success: #1ea35a;
+  --color-success-content: #ffffff;
+  --color-warning: #c3671c;
+  --color-warning-content: #ffffff;
+  --color-error: #dc4258;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 0.375rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* ---------- 全局密度与质感 ---------- */
+@layer base {
+  /* 基础字号 14px（WorkBuddy 正文基准）：覆盖 daisyUI 默认，所有 rem 单位等比缩放 */
+  html {
+    font-size: 14px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+}
+
+@layer components {
+  /* 表格行高收紧 */
+  .table :where(th, td) {
+    padding-block: 0.375rem;
+  }
+
+  /* 细边框卡片替代厚重阴影 */
+  .card {
+    @apply border border-base-300/70 shadow-none;
+  }
+
+  /* WorkBuddy：员工列表选中态（品牌青 12% 浅底 + 青字，主题自适应） */
+  .agent-item-active {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-primary);
+  }
+
+  /* WorkBuddy：AI 生成中的流光文字（110deg 渐变扫光） */
+  .wb-shining-text {
+    background: linear-gradient(
+      110deg,
+      var(--color-base-content) 40%,
+      var(--color-primary) 50%,
+      var(--color-base-content) 60%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: wb-shine 2.2s linear infinite;
+  }
+  @keyframes wb-shine {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* 侧栏分组标题：可折叠（默认收起，激活分组自动展开） */
+  .side-nav .side-group > details > summary {
+    @apply list-none flex items-center justify-between rounded-field text-[12px] font-medium py-1.5 px-2.5 gap-1
+      text-base-content/50 hover:text-base-content hover:bg-base-300/50 cursor-pointer select-none transition-colors;
+  }
+  .side-nav .side-group > details > summary::-webkit-details-marker {
+    display: none;
+  }
+  .side-nav .side-group-chevron {
+    @apply transition-transform duration-200;
+  }
+  .side-nav .side-group > details:not([open]) > summary .side-group-chevron {
+    transform: rotate(-90deg);
+  }
+  /* 分组内菜单项：紧凑缩进列 */
+  .side-nav .side-group-items {
+    @apply flex flex-col gap-0.5 mt-0.5 pl-2;
+  }
+
+  /* 侧栏导航项：active 态 accent 左竖条 + 浅底色 */
+  .side-nav a {
+    @apply relative rounded-field text-[13px] font-medium py-1.5 px-2.5 gap-2.5
+      text-base-content/70 hover:text-base-content hover:bg-base-300/50 transition-colors;
+  }
+  .side-nav a.menu-item-active {
+    @apply bg-primary/10 text-primary;
+  }
+  .side-nav a.menu-item-active::before {
+    content: '';
+    @apply absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full bg-primary;
+  }
+
+  /* 侧栏折叠为 icon-only 收纳模式（状态由 theme.js 写入 <html data-sidebar>） */
+  html[data-sidebar='collapsed'] .drawer-side > div {
+    width: 3.25rem;
+  }
+  html[data-sidebar='collapsed'] .side-label,
+  html[data-sidebar='collapsed'] .side-foot,
+  html[data-sidebar='collapsed'] .side-brand-text {
+    display: none;
+  }
+  html[data-sidebar='collapsed'] .side-nav a {
+    @apply justify-center px-0;
+  }
+  /* icon-only 折叠模式与分组折叠兼容：隐藏分组标题、子项强制平铺显示（无视 details 开关态） */
+  html[data-sidebar='collapsed'] .side-nav .side-group > details > summary {
+    display: none;
+  }
+  html[data-sidebar='collapsed'] .side-nav .side-group > details > .side-group-items {
+    display: flex !important;
+  }
+  .drawer-side > div {
+    @apply transition-[width] duration-200;
+  }
+
+  /* 命令面板 / 快捷键浮层 */
+  .cmdk-input {
+    @apply input input-sm w-full bg-base-200 border-base-300/70 focus:outline-none;
+  }
+  .cmdk-item {
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-field cursor-pointer text-[13px]
+      text-base-content/80 hover:bg-base-300/60 hover:text-base-content transition-colors;
+  }
+  .cmdk-item[data-active='true'] {
+    @apply bg-primary/10 text-primary;
+  }
+  .cmdk-kbd {
+    @apply ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded bg-base-300/70 text-base-content/60;
+  }
+
+  /* 预设头像选择器：radio-card 网格 */
+  .radio-card {
+    @apply flex flex-col items-center gap-1.5 p-2.5 rounded-lg border border-base-content/15 cursor-pointer
+      transition-colors hover:border-base-content/40;
+  }
+  .radio-card:has(input:checked) {
+    @apply border-primary bg-primary/10;
+  }
+  .radio-card input {
+    @apply hidden;
+  }
+}
