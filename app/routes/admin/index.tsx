@@ -42,21 +42,33 @@ export default createRoute(async (c) => {
 
       <div class="stats shadow bg-base-100 w-full mb-6 stats-vertical sm:stats-horizontal">
         <div class="stat">
+          <div class="stat-figure text-primary">
+            <Icon name="users" className="w-6 h-6" />
+          </div>
           <div class="stat-title">用户</div>
           <div class="stat-value">{userCount}</div>
           <div class="stat-desc text-base-content/50">全部账号</div>
         </div>
         <div class="stat">
+          <div class="stat-figure text-primary">
+            <Icon name="roles" className="w-6 h-6" />
+          </div>
           <div class="stat-title">角色</div>
           <div class="stat-value">{roleCount}</div>
           <div class="stat-desc text-base-content/50">权限分组</div>
         </div>
         <div class="stat">
+          <div class="stat-figure text-primary">
+            <Icon name="permissions" className="w-6 h-6" />
+          </div>
           <div class="stat-title">权限</div>
           <div class="stat-value">{permCount}</div>
           <div class="stat-desc text-base-content/50">系统权限点</div>
         </div>
         <div class="stat">
+          <div class="stat-figure text-primary">
+            <Icon name="shield" className="w-6 h-6" />
+          </div>
           <div class="stat-title">我的权限</div>
           <div class="stat-value">{permissions.size}</div>
           <div class="stat-desc text-base-content/50">经角色获得</div>
@@ -68,11 +80,11 @@ export default createRoute(async (c) => {
           <a
             key={card.href}
             href={card.href}
-            class="card bg-base-100 shadow hover:shadow-lg hover:-translate-y-0.5 transition"
+            class="card bg-base-100 shadow hover:border-primary/40 hover:-translate-y-0.5 transition-all duration-200"
           >
             <div class="card-body">
-              <div class="text-primary">
-                <Icon name={card.icon} className="w-7 h-7" />
+              <div class="inline-flex w-10 h-10 items-center justify-center rounded-box bg-primary/10 text-primary">
+                <Icon name={card.icon} className="w-5 h-5" />
               </div>
               <h2 class="card-title text-base">{card.title}</h2>
               <p class="text-sm text-base-content/60">{card.desc}</p>
@@ -93,7 +105,7 @@ export default createRoute(async (c) => {
           <h2 class="card-title text-base mb-1">我的权限</h2>
           <div class="flex flex-wrap gap-2">
             {[...permissions.keys()].sort().map((p) => (
-              <Badge key={p} variant="primary" mono>
+              <Badge key={p} variant="outline" mono>
                 {p}
               </Badge>
             ))}

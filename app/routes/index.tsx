@@ -38,11 +38,11 @@ export default createRoute(requireAuth, async (c) => {
           <a
             key={card.href}
             href={card.href}
-            class="card bg-base-100 shadow hover:shadow-lg hover:-translate-y-0.5 transition"
+            class="card bg-base-100 shadow hover:border-primary/40 hover:-translate-y-0.5 transition-all duration-200"
           >
             <div class="card-body">
-              <div class="text-primary">
-                <Icon name={card.icon} className="w-7 h-7" />
+              <div class="inline-flex w-10 h-10 items-center justify-center rounded-box bg-primary/10 text-primary">
+                <Icon name={card.icon} className="w-5 h-5" />
               </div>
               <h2 class="card-title text-base">{card.title}</h2>
               <p class="text-sm text-base-content/60">{card.desc}</p>
@@ -63,7 +63,7 @@ export default createRoute(requireAuth, async (c) => {
           <h2 class="card-title text-base mb-1">我的权限</h2>
           <div class="flex flex-wrap gap-2">
             {[...perms.keys()].sort().map((p) => (
-              <Badge key={p} variant="primary" mono>
+              <Badge key={p} variant="outline" mono>
                 {p}
               </Badge>
             ))}

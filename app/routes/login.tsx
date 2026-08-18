@@ -36,11 +36,14 @@ function recordLoginFailure(email: string): void {
 
 function LoginForm({ error }: { error?: string }) {
   return (
-    <div class="min-h-screen flex items-center justify-center p-4 bg-[radial-gradient(60%_50%_at_50%_0%,color-mix(in_oklab,var(--color-primary)_8%,transparent),transparent)]">
-      <div class="card bg-base-100 w-full max-w-sm shadow-xl">
+    <div class="min-h-screen flex items-center justify-center p-4 bg-[radial-gradient(55%_45%_at_50%_0%,color-mix(in_oklab,var(--color-primary)_16%,transparent),transparent)]">
+      <div class="card bg-base-100 w-full max-w-sm shadow-xl border border-base-300/70">
         <div class="card-body gap-5">
-          <div class="text-center">
-            <div class="text-2xl font-bold">RBAC 系统登录</div>
+          <div class="text-center flex flex-col items-center">
+            <span class="inline-flex items-center justify-center w-11 h-11 rounded-box bg-primary text-primary-content text-lg font-bold mb-3 shadow-sm">
+              R
+            </span>
+            <div class="text-2xl font-bold tracking-tight">RBAC 系统登录</div>
             <p class="text-sm text-base-content/60 mt-1">角色权限管理系统</p>
           </div>
           {error && (

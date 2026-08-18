@@ -174,8 +174,8 @@ function RolesPage({
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {rows.map(({ role, permissions: rolePerms, parentRoleIds }) => (
-          <div key={role.id} class="card bg-base-100 shadow">
-            <div class="card-body gap-4">
+          <div key={role.id} class="card bg-base-100 shadow hover:border-primary/40 transition-colors">
+            <div class="card-body gap-4 flex flex-col">
               <div class="flex items-start justify-between gap-2">
                 <div class="min-w-0">
                   <h2 class="card-title text-base">{role.name}</h2>
@@ -189,7 +189,7 @@ function RolesPage({
               </div>
               <div class="flex flex-wrap gap-1.5">
                 {rolePerms.map((p) => (
-                  <Badge key={p.id} variant="success" mono>
+                  <Badge key={p.id} variant="outline" mono>
                     {p.name}
                   </Badge>
                 ))}
@@ -203,7 +203,7 @@ function RolesPage({
                   继承：{parentRoleIds.map((id) => roleNameById.get(id) ?? id).join('、')}
                 </div>
               )}
-              <div class="card-actions justify-end border-t border-base-200 pt-3">
+              <div class="card-actions justify-end border-t border-base-200 pt-3 mt-auto">
                 {perms.has('role:update') && (
                   <ModalOpenButton id={`edit-${role.id}`} className="btn btn-ghost btn-sm">
                     编辑
