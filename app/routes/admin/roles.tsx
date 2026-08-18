@@ -474,6 +474,24 @@ export const POST = createRoute(async (c) => {
     if (refs.length) {
       return c.redirect('/admin/roles?flash=error:该角色仍被用户引用，无法删除')
     }
+    const dependents = db
+      .select()
+      .from(schema.roleParents)
+      .where(eq(schema.roleParents.parentRoleId, roleId))
+      .all()
+    if (dependents.length) {
+      const depRoleIds = new Set(dependents.map((d) => d.roleId))
+      const depNames = db
+        .select()
+        .from(schema.roles)
+        .all()
+        .filter((r) => depRoleIds.has(r.id))
+        .map((r) => r.name)
+        .join('、')
+      return c.redirect(
+        `/admin/roles?flash=${encodeURIComponent(`error:该角色正被 ${depNames} 继承，无法删除`)}`,
+      )
+    }
     db.delete(schema.roles).where(eq(schema.roles.id, roleId)).run()
     return c.redirect('/admin/roles?flash=success:角色已删除')
   }

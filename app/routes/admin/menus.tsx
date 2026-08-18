@@ -10,7 +10,7 @@ import { EmptyState } from '../../components/empty-state'
 import { FormField } from '../../components/form-field'
 import { Modal, ModalActions, ModalOpenButton } from '../../components/modal'
 import { PageHeader } from '../../components/page-header'
-import { PERMISSIONS, type PermissionMap } from '../../lib/rbac/permissions'
+import { type PermissionMap } from '../../lib/rbac/permissions'
 import { db, schema } from '../../lib/db'
 import type { Menu } from '../../lib/db/schema'
 
@@ -30,15 +30,15 @@ function iconOptions(selected?: string) {
   ))
 }
 
-function permissionOptions(selected?: string) {
+function permissionOptions(selected: string | undefined, permNames: string[]) {
   return (
     <>
       <option value="" selected={!selected}>
         公开（所有人可见）
       </option>
-      {PERMISSIONS.map((p) => (
-        <option key={p.name} value={p.name} selected={selected === p.name}>
-          {p.name}
+      {permNames.map((name) => (
+        <option key={name} value={name} selected={selected === name}>
+          {name}
         </option>
       ))}
     </>
@@ -62,6 +62,7 @@ function MenusPage({
   groups,
   childrenOf,
   perms,
+  permNames,
   error,
   form,
   openModal,
@@ -69,6 +70,7 @@ function MenusPage({
   groups: Menu[]
   childrenOf: Map<string, Menu[]>
   perms: PermissionMap
+  permNames: string[]
   error?: string
   form?: FormState
   openModal?: string
@@ -268,7 +270,7 @@ function MenusPage({
               可见权限
             </label>
             <select name="requiredPermission" id={`perm-${g.id}`} class="select select-sm w-full">
-              {permissionOptions(form?.requiredPermission)}
+              {permissionOptions(form?.requiredPermission, permNames)}
             </select>
             <label class="fieldset-label" for={`status-${g.id}`}>
               状态
@@ -307,7 +309,7 @@ function MenusPage({
                 可见权限
               </label>
               <select name="requiredPermission" id={`eperm-${it.id}`} class="select select-sm w-full">
-                {permissionOptions(it.requiredPermission ?? undefined)}
+                {permissionOptions(it.requiredPermission ?? undefined, permNames)}
               </select>
               <label class="fieldset-label" for={`estatus-${it.id}`}>
                 状态
@@ -337,7 +339,13 @@ function buildMenusView(c: Context, extra: { error?: string; form?: FormState; o
       childrenOf.get(m.parentId)!.push(m)
     }
   }
-  return <MenusPage groups={groups} childrenOf={childrenOf} perms={perms} {...extra} />
+  const permNames = db
+    .select({ name: schema.permissions.name })
+    .from(schema.permissions)
+    .all()
+    .map((r) => r.name)
+    .sort()
+  return <MenusPage groups={groups} childrenOf={childrenOf} perms={perms} permNames={permNames} {...extra} />
 }
 
 export default createRoute(requirePermission('menu:manage'), (c) => {
@@ -362,6 +370,13 @@ export const POST = createRoute(async (c) => {
   const action = String(body.intent ?? '')
   const flash = (msg: string) => c.redirect(`/admin/menus?flash=${encodeURIComponent(msg)}`)
   const str = (v: unknown) => String(v ?? '').trim()
+  const validPermNames = new Set(
+    db.select({ name: schema.permissions.name }).from(schema.permissions).all().map((r) => r.name)
+  )
+  const validPerm = (v: unknown): string | null => {
+    const name = str(v)
+    return name && validPermNames.has(name) ? name : null
+  }
 
   switch (action) {
     case 'groupCreate': {
@@ -412,7 +427,7 @@ export const POST = createRoute(async (c) => {
       if (db.select().from(schema.menus).where(eq(schema.menus.href, href)).get())
         return flash('error:该链接已存在')
       const icon = ICON_NAMES.includes(str(body.icon) as IconName) ? str(body.icon) : 'menu'
-      const requiredPermission = str(body.requiredPermission) || null
+      const requiredPermission = validPerm(body.requiredPermission)
       const status = str(body.status) === 'hidden' ? 'hidden' : 'active'
       const siblings = db
         .select()
@@ -434,7 +449,7 @@ export const POST = createRoute(async (c) => {
       const dup = db.select().from(schema.menus).all().find((m) => m.href === href && m.id !== id)
       if (dup) return flash('error:该链接已被其他菜单使用')
       const icon = ICON_NAMES.includes(str(body.icon) as IconName) ? str(body.icon) : 'menu'
-      const requiredPermission = str(body.requiredPermission) || null
+      const requiredPermission = validPerm(body.requiredPermission)
       const status = str(body.status) === 'hidden' ? 'hidden' : 'active'
       db.update(schema.menus)
         .set({ name, href, icon, requiredPermission, status })

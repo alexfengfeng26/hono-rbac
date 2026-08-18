@@ -333,3 +333,78 @@ describe('RBAC 回归：继承环与防锁死', () => {
     ).toBe('admin')
   })
 })
+
+describe('RBAC 回归：权限-菜单-角色引用一致性', () => {
+  it('权限改名后，菜单的 requiredPermission 同步更新', async () => {
+    const adminCookie = await login('admin@example.com', 'admin123')
+    const pid = crypto.randomUUID()
+    const gid = crypto.randomUUID()
+    const mid = crypto.randomUUID()
+    db.insert(schema.permissions).values({ id: pid, name: 'tmp:rename:before' }).run()
+    db.insert(schema.menus).values({ id: gid, name: '改名组', order: 97, status: 'active' }).run()
+    db.insert(schema.menus).values({
+      id: mid, parentId: gid, name: '改名项', href: `/rename-${mid}`,
+      order: 0, status: 'active', requiredPermission: 'tmp:rename:before',
+    }).run()
+
+    const res = await post('/admin/permissions', adminCookie, {
+      intent: 'update',
+      permissionId: pid,
+      name: 'tmp:rename:after',
+    })
+    expect(res.status).toBe(302)
+    expect(
+      db.select().from(schema.menus).where(eq(schema.menus.id, mid)).get()!.requiredPermission,
+    ).toBe('tmp:rename:after')
+
+    db.delete(schema.menus).where(eq(schema.menus.id, gid)).run() // 级联清子项
+    db.delete(schema.permissions).where(eq(schema.permissions.id, pid)).run()
+  })
+
+  it('删除仍被菜单引用的权限被拦截（302 + flash=error），解除引用后可删除', async () => {
+    const adminCookie = await login('admin@example.com', 'admin123')
+    const pid = crypto.randomUUID()
+    const gid = crypto.randomUUID()
+    const mid = crypto.randomUUID()
+    db.insert(schema.permissions).values({ id: pid, name: 'tmp:menu:ref' }).run()
+    db.insert(schema.menus).values({ id: gid, name: '引用组', order: 96, status: 'active' }).run()
+    db.insert(schema.menus).values({
+      id: mid, parentId: gid, name: '引用项', href: `/ref-${mid}`,
+      order: 0, status: 'active', requiredPermission: 'tmp:menu:ref',
+    }).run()
+
+    const blocked = await post('/admin/permissions', adminCookie, { intent: 'delete', permissionId: pid })
+    expect(blocked.status).toBe(302)
+    expect(blocked.headers.get('location')).toContain('flash=error')
+    expect(db.select().from(schema.permissions).where(eq(schema.permissions.id, pid)).get()).toBeDefined()
+
+    db.delete(schema.menus).where(eq(schema.menus.id, gid)).run() // 级联清子项，解除引用
+    const ok = await post('/admin/permissions', adminCookie, { intent: 'delete', permissionId: pid })
+    expect(ok.headers.get('location')).toContain('flash=success')
+    expect(db.select().from(schema.permissions).where(eq(schema.permissions.id, pid)).get()).toBeUndefined()
+  })
+
+  it('删除被其他角色继承的角色被拦截，role_parents 边保留；解除继承后可删除', async () => {
+    const adminCookie = await login('admin@example.com', 'admin123')
+    const parent = crypto.randomUUID()
+    const child = crypto.randomUUID()
+    db.insert(schema.roles).values([
+      { id: parent, name: 'tmp_parent' },
+      { id: child, name: 'tmp_child' },
+    ]).run()
+    db.insert(schema.roleParents).values({ roleId: child, parentRoleId: parent }).run()
+
+    const blocked = await post('/admin/roles', adminCookie, { intent: 'delete', roleId: parent })
+    expect(blocked.status).toBe(302)
+    expect(blocked.headers.get('location')).toContain('flash=error')
+    expect(db.select().from(schema.roles).where(eq(schema.roles.id, parent)).get()).toBeDefined()
+    expect(
+      db.select().from(schema.roleParents).where(eq(schema.roleParents.parentRoleId, parent)).all().length,
+    ).toBe(1)
+
+    db.delete(schema.roleParents).where(eq(schema.roleParents.roleId, child)).run()
+    await post('/admin/roles', adminCookie, { intent: 'delete', roleId: parent })
+    expect(db.select().from(schema.roles).where(eq(schema.roles.id, parent)).get()).toBeUndefined()
+    db.delete(schema.roles).where(eq(schema.roles.id, child)).run()
+  })
+})

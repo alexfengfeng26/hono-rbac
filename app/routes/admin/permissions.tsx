@@ -471,7 +471,12 @@ export const POST = createRoute(async (c) => {
       return c.redirect('/admin/permissions?flash=error:该权限名已存在')
     }
     const groupId = resolveGroupId(String(body.groupId ?? ''))
-    db.update(schema.permissions).set({ name, description, groupId }).where(eq(schema.permissions.id, permissionId)).run()
+    db.transaction((tx) => {
+      tx.update(schema.permissions).set({ name, description, groupId }).where(eq(schema.permissions.id, permissionId)).run()
+      if (name !== perm.name) {
+        tx.update(schema.menus).set({ requiredPermission: name }).where(eq(schema.menus.requiredPermission, perm.name)).run()
+      }
+    })
     return c.redirect('/admin/permissions?flash=success:权限已更新')
   }
 
@@ -491,6 +496,14 @@ export const POST = createRoute(async (c) => {
       .all()
     if (refs.length) {
       return c.redirect('/admin/permissions?flash=error:该权限仍被角色引用，无法删除')
+    }
+    const menuRefs = db
+      .select()
+      .from(schema.menus)
+      .where(eq(schema.menus.requiredPermission, perm.name))
+      .all()
+    if (menuRefs.length) {
+      return c.redirect('/admin/permissions?flash=error:该权限仍被菜单引用，无法删除')
     }
     db.delete(schema.permissions).where(eq(schema.permissions.id, permissionId)).run()
     return c.redirect('/admin/permissions?flash=success:权限已删除')
