@@ -5,7 +5,7 @@ import { db, schema } from '../app/lib/db'
 
 describe('角色权限写入隔离测试', () => {
   it('复刻 create 路由：db.transaction 内写 role_permissions 是否落库', () => {
-    const permNames = ['crm:contact:read', 'crm:contact:create']
+    const permNames = ['user:read', 'role:read']
     const id = randomUUID()
     db.insert(schema.roles).values({ id, name: 'iso_' + id.slice(0, 6), description: '' }).run()
 

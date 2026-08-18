@@ -23,7 +23,8 @@ describe('isSqlLogEnabled（DB_LOG 开关解析）', () => {
 
   it('开启值：1 / true / on / yes（大小写不敏感）', () => {
     for (const v of ['1', 'true', 'on', 'yes', 'TRUE', 'On', 'YES']) {
-      const restore = withEnv({ DB_LOG: v })
+      // setup.ts 置 NODE_ENV=test（强制静默），这里需临时清掉以验证开关解析本身
+      const restore = withEnv({ DB_LOG: v, NODE_ENV: undefined })
       expect(isSqlLogEnabled(), `DB_LOG=${v}`).toBe(true)
       restore()
     }

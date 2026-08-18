@@ -1,7 +1,8 @@
 import { createRoute } from 'honox/factory'
-import { eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { requireAuth } from '../../lib/auth/guard'
 import { hashPassword, validatePassword, verifyPassword } from '../../lib/auth/password'
+import { getSessionToken } from '../../lib/auth/session'
 import { PageHeader } from '../../components/page-header'
 import { FormField } from '../../components/form-field'
 import { db, schema } from '../../lib/db'
@@ -94,5 +95,11 @@ export const POST = createRoute(requireAuth, async (c) => {
     .where(eq(schema.users.id, user.id))
     .run()
 
-  return c.redirect('/admin/profile?flash=success:密码已更新')
+  // 改密后注销其它设备的会话（当前设备保持登录），防止旧会话被继续冒用
+  const currentToken = getSessionToken(c) ?? ''
+  db.delete(schema.sessions)
+    .where(and(eq(schema.sessions.userId, user.id), ne(schema.sessions.id, currentToken)))
+    .run()
+
+  return c.redirect('/admin/profile?flash=success:密码已更新，其它设备已下线')
 })

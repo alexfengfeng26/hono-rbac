@@ -4,7 +4,7 @@ type Props = {
   message: string
   /** 提交目标（如 /admin/users） */
   action: string
-  /** 随表单提交的隐藏字段（如 { action: 'delete', userId: '...' }） */
+  /** 随表单提交的隐藏字段（如 { intent: 'delete', userId: '...' }） */
   fields: Record<string, string>
   /** 触发按钮文案，默认「删除」 */
   label?: string

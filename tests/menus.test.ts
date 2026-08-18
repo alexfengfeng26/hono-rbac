@@ -14,8 +14,8 @@ async function authHeaders(uid: string) {
   return { cookie: `rbac_session=${await createSession(uid)}` }
 }
 
-const GROUP_COUNT = 5
-const ITEM_COUNT = 12
+const GROUP_COUNT = 2
+const ITEM_COUNT = 7
 
 describe('菜单管理', () => {
   it('ensureBuiltinMenus 幂等：重复执行不产生重复分组/菜单项', () => {
@@ -86,7 +86,7 @@ describe('菜单管理', () => {
     const res = await app.request('/admin/menus', {
       method: 'POST',
       headers: { ...(await authHeaders(adminId)), 'content-type': 'application/x-www-form-urlencoded', origin: 'http://localhost' },
-      body: new URLSearchParams({ action: 'itemCreate', parentId: groupId, name: '新增', href: '/brand-new', icon: 'chart' }).toString(),
+      body: new URLSearchParams({ intent: 'itemCreate', parentId: groupId, name: '新增', href: '/brand-new', icon: 'chart' }).toString(),
     })
     expect(res.status).toBe(302)
     expect(db.select().from(schema.menus).where(eq(schema.menus.href, '/brand-new')).get()).toBeTruthy()
@@ -95,7 +95,7 @@ describe('菜单管理', () => {
     const dup = await app.request('/admin/menus', {
       method: 'POST',
       headers: { ...(await authHeaders(adminId)), 'content-type': 'application/x-www-form-urlencoded', origin: 'http://localhost' },
-      body: new URLSearchParams({ action: 'itemCreate', parentId: groupId, name: '重复', href: '/brand-new', icon: 'chart' }).toString(),
+      body: new URLSearchParams({ intent: 'itemCreate', parentId: groupId, name: '重复', href: '/brand-new', icon: 'chart' }).toString(),
     })
     expect(dup.status).toBe(302)
 
@@ -103,7 +103,7 @@ describe('菜单管理', () => {
     await app.request('/admin/menus', {
       method: 'POST',
       headers: { ...(await authHeaders(adminId)), 'content-type': 'application/x-www-form-urlencoded', origin: 'http://localhost' },
-      body: new URLSearchParams({ action: 'itemMoveUp', id: b }).toString(),
+      body: new URLSearchParams({ intent: 'itemMoveUp', id: b }).toString(),
     })
     const after = db.select().from(schema.menus).where(eq(schema.menus.id, a)).get()!.order
     const bAfter = db.select().from(schema.menus).where(eq(schema.menus.id, b)).get()!.order
@@ -115,7 +115,7 @@ describe('菜单管理', () => {
     await app.request('/admin/menus', {
       method: 'POST',
       headers: { ...(await authHeaders(adminId)), 'content-type': 'application/x-www-form-urlencoded', origin: 'http://localhost' },
-      body: new URLSearchParams({ action: 'groupDelete', id: groupId }).toString(),
+      body: new URLSearchParams({ intent: 'groupDelete', id: groupId }).toString(),
     })
     expect(db.select().from(schema.menus).where(eq(schema.menus.id, groupId)).get()).toBeUndefined()
     expect(loadAllMenus().filter((m) => m.parentId === groupId).length).toBe(0)

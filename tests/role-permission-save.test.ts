@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import app from '../app/server'
 import { db, schema } from '../app/lib/db'
 import { createSession } from '../app/lib/auth/session'
+import { ensureBuiltinRolePermissions, ensurePermission } from '../app/lib/rbac/permissions'
 
 async function authHeaders(userId: string): Promise<Record<string, string>> {
   const token = await createSession(userId)
@@ -18,6 +19,16 @@ describe('角色权限保存链路验证', () => {
       .from(schema.users)
       .where(eq(schema.users.email, 'admin@example.com'))
       .get()!.id
+    // 自定义权限（模拟权限管理页创建的权限点）：注册入库并回填给 admin 角色
+    for (const name of [
+      'crm:contact:read',
+      'crm:contact:create',
+      'crm:contact:update',
+      'crm:contact:assign',
+    ]) {
+      ensurePermission(name, '测试用自定义权限')
+    }
+    ensureBuiltinRolePermissions()
   })
 
   it('SSR: 角色表单渲染出 CRM 权限复选框 (name=permissions)', async () => {
@@ -36,7 +47,7 @@ describe('角色权限保存链路验证', () => {
 
   it('POST: 创建角色并勾选 CRM 权限 → role_permissions 落库', async () => {
     const body = new URLSearchParams()
-    body.append('action', 'create')
+    body.append('intent', 'create')
     body.append('name', 'crm管理员_验证')
     body.append('description', '集成验证用')
     body.append('permissions', 'crm:contact:read')
@@ -79,7 +90,7 @@ describe('角色权限保存链路验证', () => {
     db.insert(schema.rolePermissions).values({ roleId: id, permissionId: readId }).run()
 
     const body = new URLSearchParams()
-    body.append('action', 'update')
+    body.append('intent', 'update')
     body.append('roleId', id)
     body.append('name', 'edit_tmp')
     body.append('description', 'updated')

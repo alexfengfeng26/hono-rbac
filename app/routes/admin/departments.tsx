@@ -91,7 +91,7 @@ function DepartmentTree({
                 <ConfirmButton
                   message={`确定删除部门 ${dept.name}？若有子部门或成员则无法删除。`}
                   action="/admin/departments"
-                  fields={{ action: 'delete', departmentId: dept.id }}
+                  fields={{ intent: 'delete', departmentId: dept.id }}
                 />
               </span>
             )}
@@ -157,7 +157,7 @@ function DepartmentsPage({
           {/* 创建部门 modal */}
           <Modal id="create-dept-modal" title="创建部门" open={openCreate}>
             <form method="post" action="/admin/departments" class="fieldset gap-3">
-              <input type="hidden" name="action" value="create" />
+              <input type="hidden" name="intent" value="create" />
               {error && (
                 <div role="alert" class="alert alert-error alert-sm text-sm">
                   {error}
@@ -191,7 +191,7 @@ function DepartmentsPage({
               }
             >
               <form method="post" action="/admin/departments" class="fieldset gap-3">
-                <input type="hidden" name="action" value="update" />
+                <input type="hidden" name="intent" value="update" />
                 <input type="hidden" name="departmentId" value={d.id} />
                 <FormField label="部门名称" name="name" required placeholder="部门名称" value={d.name} />
                 <fieldset class="fieldset mt-1">
@@ -238,7 +238,7 @@ export default createRoute(requireAuth, requirePermission('org:department:manage
 export const POST = createRoute(requireAuth, requirePermission('org:department:manage'), async (c) => {
   const perms = c.get('permissions') as PermissionMap
   const body = await c.req.parseBody({ all: true })
-  const action = String(body.action ?? '')
+  const action = String(body.intent ?? '')
 
   if (action === 'create') {
     const rawName = String(body.name ?? '').trim()

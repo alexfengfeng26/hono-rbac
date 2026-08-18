@@ -169,11 +169,11 @@ export function backfillPermissionGroups(): void {
   }
 }
 
-/** 校验权限名格式：resource:action，仅含小写字母/数字/下划线/连字符 */
+/** 校验权限名格式：resource:action（支持多级，如 org:department:manage），仅含小写字母/数字/下划线/连字符 */
 export function validatePermissionName(name: string): string | null {
   const trimmed = name.trim().toLowerCase()
   if (!trimmed) return '权限名不能为空'
-  if (!/^[a-z0-9_-]+:[a-z0-9_-]+$/.test(trimmed)) {
+  if (!/^[a-z0-9_-]+(:[a-z0-9_-]+)+$/.test(trimmed)) {
     return '权限名格式应为 resource:action（如 report:read）'
   }
   return null

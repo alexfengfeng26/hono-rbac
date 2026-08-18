@@ -148,7 +148,7 @@ function PermTable({
                           refCount ? `仍有 ${refCount} 个角色引用它，需先解绑。` : ''
                         }`}
                         action="/admin/permissions"
-                        fields={{ action: 'delete', permissionId: p.id }}
+                        fields={{ intent: 'delete', permissionId: p.id }}
                       />
                     )}
                   </div>
@@ -317,7 +317,7 @@ function PermsPage({
       {/* 新建权限 modal */}
       <Modal id="create-perm-modal" title="新建权限" open={openCreate}>
         <form method="post" action="/admin/permissions" class="fieldset gap-3">
-          <input type="hidden" name="action" value="create" />
+          <input type="hidden" name="intent" value="create" />
           {error && (
             <div role="alert" class="alert alert-error alert-sm text-sm">
               {error}
@@ -365,7 +365,7 @@ function PermsPage({
             }
           >
             <form method="post" action="/admin/permissions" class="fieldset gap-3">
-              <input type="hidden" name="action" value="update" />
+              <input type="hidden" name="intent" value="update" />
               <input type="hidden" name="permissionId" value={p.id} />
               <FormField
                 label="权限名"
@@ -417,7 +417,7 @@ export default createRoute(requirePermission('role:read'), async (c) => {
 export const POST = createRoute(async (c) => {
   const perms = c.get('permissions') ?? new Set<string>()
   const body = await c.req.parseBody({ all: true })
-  const action = String(body.action ?? '')
+  const action = String(body.intent ?? '')
 
   if (action === 'create') {
     if (!perms.has('role:update')) return c.text('403 Forbidden', 403)

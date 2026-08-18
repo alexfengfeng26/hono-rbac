@@ -370,7 +370,7 @@ function UsersPage({
                       <ConfirmButton
                         message={`确定删除用户 ${user.name}（${user.email}）？此操作不可撤销。`}
                         action="/admin/users"
-                        fields={{ action: 'delete', userId: user.id }}
+                        fields={{ intent: 'delete', userId: user.id }}
                       />
                     )}
                   </div>
@@ -439,7 +439,7 @@ function UsersPage({
                   <ConfirmButton
                     message={`确定删除用户 ${user.name}？此操作不可撤销。`}
                     action="/admin/users"
-                    fields={{ action: 'delete', userId: user.id }}
+                    fields={{ intent: 'delete', userId: user.id }}
                   />
                 )}
               </div>
@@ -497,7 +497,7 @@ function UsersPage({
       {/* 创建用户 modal */}
       <Modal id="create-user-modal" title="创建用户" open={openCreate}>
         <form method="post" action="/admin/users" class="fieldset gap-3">
-          <input type="hidden" name="action" value="create" />
+          <input type="hidden" name="intent" value="create" />
           {error && (
             <div role="alert" class="alert alert-error alert-sm text-sm">
               {error}
@@ -570,7 +570,7 @@ function UsersPage({
             }
           >
             <form method="post" action="/admin/users">
-              <input type="hidden" name="action" value="updateRoles" />
+              <input type="hidden" name="intent" value="updateRoles" />
               <input type="hidden" name="userId" value={user.id} />
               <div class="flex flex-col gap-3">
                 {roles.map((r) => (
@@ -608,7 +608,7 @@ function UsersPage({
             }
           >
             <form method="post" action="/admin/users" class="fieldset gap-3">
-              <input type="hidden" name="action" value="update" />
+              <input type="hidden" name="intent" value="update" />
               <input type="hidden" name="userId" value={user.id} />
               <FormField label="姓名" name="name" required placeholder="姓名" value={user.name} />
               <FormField
@@ -688,13 +688,23 @@ export const POST = createRoute(async (c) => {
   const me = c.get('user') as User
   const perms = c.get('permissions') ?? new Set<string>()
   const body = await c.req.parseBody({ all: true })
-  const action = String(body.action ?? '')
+  const action = String(body.intent ?? '')
   const roles = body.roles
     ? Array.isArray(body.roles)
       ? body.roles.map(String)
       : [String(body.roles)]
     : []
   const ids = parseIds(body.ids)
+  // 过滤不存在的角色 id，避免伪造表单触发外键异常 500
+  const existingRoleIds = new Set(
+    db.select({ id: schema.roles.id }).from(schema.roles).all().map((r) => r.id),
+  )
+  const safeRoles = roles.filter((id) => existingRoleIds.has(id))
+  // 防锁死：目标用户若是「最后一个管理员」，新角色集必须仍含 admin 角色
+  const adminRole = db.select().from(schema.roles).where(eq(schema.roles.name, 'admin')).get()
+  const adminIds = adminUserIds()
+  const stripsLastAdmin = (userId: string) =>
+    !!adminRole && adminIds.length <= 1 && adminIds.includes(userId) && !safeRoles.includes(adminRole.id)
 
   if (action === 'create') {
     if (!perms.has('user:create')) return c.text('403 Forbidden', 403)
@@ -733,9 +743,9 @@ export const POST = createRoute(async (c) => {
         departmentId: body.departmentId ? String(body.departmentId) : null,
       })
       .run()
-    if (roles.length) {
+    if (safeRoles.length) {
       db.insert(schema.userRoles)
-        .values(roles.map((roleId) => ({ userId: id, roleId })))
+        .values(safeRoles.map((roleId) => ({ userId: id, roleId })))
         .run()
     }
     return c.redirect('/admin/users?flash=success:用户已创建')
@@ -746,11 +756,14 @@ export const POST = createRoute(async (c) => {
     const userId = String(body.userId ?? '')
     const user = db.select().from(schema.users).where(eq(schema.users.id, userId)).get()
     if (!user) return c.text('用户不存在', 404)
+    if (stripsLastAdmin(userId)) {
+      return c.redirect('/admin/users?flash=error:不能移除最后一个管理员的 admin 角色')
+    }
     db.transaction((tx) => {
       tx.delete(schema.userRoles).where(eq(schema.userRoles.userId, userId)).run()
-      if (roles.length) {
+      if (safeRoles.length) {
         tx.insert(schema.userRoles)
-          .values(roles.map((roleId) => ({ userId, roleId })))
+          .values(safeRoles.map((roleId) => ({ userId, roleId })))
           .run()
       }
     })
@@ -789,6 +802,10 @@ export const POST = createRoute(async (c) => {
         return c.redirect('/admin/users?flash=error:不能停用最后一个管理员')
       }
     }
+    // 防锁死：不能通过编辑移除最后一个管理员的 admin 角色
+    if (stripsLastAdmin(userId)) {
+      return c.redirect('/admin/users?flash=error:不能移除最后一个管理员的 admin 角色')
+    }
     const patch: Partial<typeof schema.users.$inferInsert> = {
       name,
       email,
@@ -803,9 +820,9 @@ export const POST = createRoute(async (c) => {
     db.update(schema.users).set(patch).where(eq(schema.users.id, userId)).run()
     db.transaction((tx) => {
       tx.delete(schema.userRoles).where(eq(schema.userRoles.userId, userId)).run()
-      if (roles.length) {
+      if (safeRoles.length) {
         tx.insert(schema.userRoles)
-          .values(roles.map((roleId) => ({ userId, roleId })))
+          .values(safeRoles.map((roleId) => ({ userId, roleId })))
           .run()
       }
     })
@@ -833,9 +850,9 @@ export const POST = createRoute(async (c) => {
     db.transaction((tx) => {
       for (const id of targets) {
         tx.delete(schema.userRoles).where(eq(schema.userRoles.userId, id)).run()
-        if (roles.length) {
+        if (safeRoles.length) {
           tx.insert(schema.userRoles)
-            .values(roles.map((roleId) => ({ userId: id, roleId })))
+            .values(safeRoles.map((roleId) => ({ userId: id, roleId })))
             .run()
         }
       }
@@ -866,7 +883,7 @@ export const POST = createRoute(async (c) => {
     // 停用操作提供「撤销」（反向批量启用）
     if (status === 'disabled' && targets.length > 0) {
       const undo = Buffer.from(
-        JSON.stringify({ action: '/admin/users', fields: { action: 'bulkSetStatus', status: 'active', ids: targets.join(',') } }),
+        JSON.stringify({ action: '/admin/users', fields: { intent: 'bulkSetStatus', status: 'active', ids: targets.join(',') } }),
       ).toString('base64url')
       return c.redirect(`${base}&undo=${undo}`)
     }

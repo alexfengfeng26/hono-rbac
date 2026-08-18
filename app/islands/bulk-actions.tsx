@@ -70,7 +70,7 @@ export default function BulkActions({ roles }: Props) {
             批量分配角色
           </button>
           <form method="post" action="/admin/users" class="contents">
-            <input type="hidden" name="action" value="bulkSetStatus" />
+            <input type="hidden" name="intent" value="bulkSetStatus" />
             <input type="hidden" name="status" value="disabled" />
             {hiddenInputs}
             <button type="submit" class="btn btn-sm">
@@ -78,7 +78,7 @@ export default function BulkActions({ roles }: Props) {
             </button>
           </form>
           <form method="post" action="/admin/users" class="contents">
-            <input type="hidden" name="action" value="bulkSetStatus" />
+            <input type="hidden" name="intent" value="bulkSetStatus" />
             <input type="hidden" name="status" value="active" />
             {hiddenInputs}
             <button type="submit" class="btn btn-sm">
@@ -102,7 +102,7 @@ export default function BulkActions({ roles }: Props) {
             <span class="text-sm font-normal text-base-content/50">（已选 {selected.length} 项）</span>
           </h3>
           <form method="post" action="/admin/users" class="mt-4">
-            <input type="hidden" name="action" value="bulkAssignRoles" />
+            <input type="hidden" name="intent" value="bulkAssignRoles" />
             {hiddenInputs}
             <div class="flex flex-col gap-2">
               {roles.map((r) => (
@@ -147,7 +147,7 @@ export default function BulkActions({ roles }: Props) {
             确定删除选中的 {selected.length} 个用户？被删除的账号不可恢复，其角色与会话将一并清除。
           </p>
           <form method="post" action="/admin/users">
-            <input type="hidden" name="action" value="bulkDelete" />
+            <input type="hidden" name="intent" value="bulkDelete" />
             {hiddenInputs}
             <div class="modal-action mt-2">
               <button

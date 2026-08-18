@@ -140,7 +140,8 @@ export default jsxRenderer(({ children }) => {
   const user = c.get('user')
   const perms = (c.get('permissions') as PermissionMap | undefined) ?? new Set<string>()
   const path = c.req.path
-  const isAdminArea = path.startsWith('/admin')
+  // 工作台(/)与管理页共用后台布局（侧栏 + 导航栏），避免从侧栏点「工作台」后丢失导航
+  const isAdminArea = path === '/' || path.startsWith('/admin')
 
   // 菜单树（按权限过滤）——侧栏 / 面包屑 / 命令面板共用
   const navTree = user ? loadMenuTree(perms) : []
@@ -152,11 +153,15 @@ export default jsxRenderer(({ children }) => {
   // 面包屑：从菜单数据反查当前页层级（首页 / 当前）
   let crumbs: Crumb[] = []
   if (isAdminArea) {
-    crumbs = [{ label: '首页', href: '/' }]
-    if (path !== '/admin') {
-      const byHref = new Map(flattenMenuTree(navTree).map((i) => [i.href, i.name]))
-      const found = byHref.get(path) ?? SELF_LINKS.find((l) => l.href === path)?.label
-      if (found) crumbs.push({ label: found })
+    if (path === '/') {
+      crumbs = [{ label: '工作台' }]
+    } else {
+      crumbs = [{ label: '首页', href: '/' }]
+      if (path !== '/admin') {
+        const byHref = new Map(flattenMenuTree(navTree).map((i) => [i.href, i.name]))
+        const found = byHref.get(path) ?? SELF_LINKS.find((l) => l.href === path)?.label
+        if (found) crumbs.push({ label: found })
+      }
     }
   }
 
@@ -197,46 +202,6 @@ export default jsxRenderer(({ children }) => {
         <script
           dangerouslySetInnerHTML={{
             __html: `
-/* 修复 hono/jsx/dom 运行时对 <form action> 的污染（form.action 属性被设成节点导致提交 404）。
-   任何加载 island 的页面都会触发；SSR 的 action 属性本身正确，这里用属性值回写 DOM 属性。 */
-function __fixFormAction() {
-  var forms = document.querySelectorAll('form[action]');
-  for (var i = 0; i < forms.length; i++) {
-    var f = forms[i];
-    var attr = f.getAttribute('action');
-    if (attr && typeof f.action !== 'string') {
-      try { f.action = attr; } catch (e) {}
-    }
-  }
-}
-__fixFormAction();
-document.addEventListener('DOMContentLoaded', __fixFormAction);
-setInterval(__fixFormAction, 500);
-/* hono/jsx/dom 会把 <form> 的 action 属性污染成节点（form.action 非字符串）。
-   若无法修复，则在提交时用手动重放（fetch + HTML 属性 URL）替代原生提交，保证所有表单可用。 */
-document.addEventListener('submit', function (e) {
-  var form = e.target;
-  if (!(form instanceof HTMLFormElement)) return;
-  var attr = form.getAttribute('action');
-  if (!attr || typeof form.action === 'string') return;
-  if (form.hasAttribute('data-models-json')) return; // 交给 models-submit（fetch 走 getAttribute，不受影响）
-  e.preventDefault();
-  var fd = new FormData(form);
-  var params = new URLSearchParams();
-  fd.forEach(function (v, k) { params.append(k, String(v)); });
-  fetch(attr, { method: 'POST', body: params, redirect: 'manual' })
-    .then(function (res) {
-      if (res.status >= 300 && res.status < 400) {
-        var loc = res.headers.get('location');
-        window.location.href = loc || attr;
-      } else if (res.status === 200) {
-        res.text().then(function (html) { document.open(); document.write(html); document.close(); });
-      } else {
-        window.location.href = attr;
-      }
-    })
-    .catch(function () { window.location.href = attr; });
-}, true);
 document.addEventListener('click', function (e) {
   var t = e.target;
   if (!(t instanceof Element)) return;
@@ -249,13 +214,10 @@ document.addEventListener('click', function (e) {
   if (t instanceof HTMLDialogElement) t.close();
 });
 document.querySelectorAll('dialog[data-auto-open="true"]').forEach(function (d) { if (d instanceof HTMLDialogElement) d.showModal(); });
+/* 提交中的表单：按钮置为 loading，防止重复提交 */
 document.addEventListener('submit', function (e) {
   var form = e.target;
   if (!(form instanceof HTMLFormElement)) return;
-  var attr = form.getAttribute('action');
-  if (attr && typeof form.action !== 'string') {
-    try { form.action = attr; } catch (e2) {}
-  }
   if (form.getAttribute('method') && form.getAttribute('method').toLowerCase() === 'get') return;
   var btn = form.querySelector('button[type="submit"]');
   if (btn) { btn.classList.add('loading'); btn.disabled = true; }

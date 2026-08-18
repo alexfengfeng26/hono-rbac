@@ -75,6 +75,7 @@ function MenusPage({
 }) {
   return (
     <div>
+      <title>菜单管理 - RBAC</title>
       <PageHeader
         title="菜单管理"
         subtitle="配置侧栏导航分组与入口（权限不足的菜单项对用户自动隐藏）"
@@ -108,14 +109,14 @@ function MenusPage({
                 </div>
                 <div class="flex items-center gap-1">
                   <form method="post" action="/admin/menus" class="inline">
-                    <input type="hidden" name="action" value="groupMoveUp" />
+                    <input type="hidden" name="intent" value="groupMoveUp" />
                     <input type="hidden" name="id" value={g.id} />
                     <button class="btn btn-ghost btn-xs" title="上移分组">
                       ↑
                     </button>
                   </form>
                   <form method="post" action="/admin/menus" class="inline">
-                    <input type="hidden" name="action" value="groupMoveDown" />
+                    <input type="hidden" name="intent" value="groupMoveDown" />
                     <input type="hidden" name="id" value={g.id} />
                     <button class="btn btn-ghost btn-xs" title="下移分组">
                       ↓
@@ -126,7 +127,7 @@ function MenusPage({
                   </ModalOpenButton>
                   <ConfirmButton
                     action="/admin/menus"
-                    fields={{ action: 'groupDelete', id: g.id }}
+                    fields={{ intent: 'groupDelete', id: g.id }}
                     message={`删除分组「${g.name}」将同时删除其下 ${items.length} 个菜单项，确定？`}
                     label="删除"
                   />
@@ -174,14 +175,14 @@ function MenusPage({
                         <td>
                           <div class="flex items-center justify-end gap-1">
                             <form method="post" action="/admin/menus" class="inline">
-                              <input type="hidden" name="action" value="itemMoveUp" />
+                              <input type="hidden" name="intent" value="itemMoveUp" />
                               <input type="hidden" name="id" value={it.id} />
                               <button class="btn btn-ghost btn-xs" title="上移">
                                 ↑
                               </button>
                             </form>
                             <form method="post" action="/admin/menus" class="inline">
-                              <input type="hidden" name="action" value="itemMoveDown" />
+                              <input type="hidden" name="intent" value="itemMoveDown" />
                               <input type="hidden" name="id" value={it.id} />
                               <button class="btn btn-ghost btn-xs" title="下移">
                                 ↓
@@ -192,7 +193,7 @@ function MenusPage({
                             </ModalOpenButton>
                             <ConfirmButton
                               action="/admin/menus"
-                              fields={{ action: 'itemDelete', id: it.id }}
+                              fields={{ intent: 'itemDelete', id: it.id }}
                               message={`删除菜单项「${it.name}」？`}
                               label="删除"
                             />
@@ -224,7 +225,7 @@ function MenusPage({
       {/* 新建分组 */}
       <Modal id="create-group-modal" title="新建分组" open={openModal === 'create-group'}>
         <form method="post" action="/admin/menus" class="flex flex-col gap-2">
-          <input type="hidden" name="action" value="groupCreate" />
+          <input type="hidden" name="intent" value="groupCreate" />
           <FormField label="分组名称" name="name" required placeholder="如：管理 / 业务 / 分析" value={form?.name} />
           <ModalActions cancelId="create-group-modal" submitLabel="创建" />
         </form>
@@ -234,7 +235,7 @@ function MenusPage({
       {groups.map((g) => (
         <Modal key={`edit-group-${g.id}`} id={`edit-group-${g.id}`} title={`重命名分组「${g.name}」`}>
           <form method="post" action="/admin/menus" class="flex flex-col gap-2">
-            <input type="hidden" name="action" value="groupUpdate" />
+            <input type="hidden" name="intent" value="groupUpdate" />
             <input type="hidden" name="id" value={g.id} />
             <FormField label="分组名称" name="name" required value={form?.name} />
             <ModalActions cancelId={`edit-group-${g.id}`} submitLabel="保存" />
@@ -251,7 +252,7 @@ function MenusPage({
           boxClass="max-w-xl"
         >
           <form method="post" action="/admin/menus" class="flex flex-col gap-2">
-            <input type="hidden" name="action" value="itemCreate" />
+            <input type="hidden" name="intent" value="itemCreate" />
             <input type="hidden" name="parentId" value={g.id} />
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <FormField label="名称" name="name" required placeholder="如：用户管理" value={form?.name} />
@@ -290,7 +291,7 @@ function MenusPage({
             boxClass="max-w-xl"
           >
             <form method="post" action="/admin/menus" class="flex flex-col gap-2">
-              <input type="hidden" name="action" value="itemUpdate" />
+              <input type="hidden" name="intent" value="itemUpdate" />
               <input type="hidden" name="id" value={it.id} />
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <FormField label="名称" name="name" required value={it.name} />
@@ -358,7 +359,7 @@ export const POST = createRoute(async (c) => {
   const perms = c.get('permissions') as PermissionMap
   if (!perms.has('menu:manage')) return c.text('403 Forbidden', 403)
   const body = await c.req.parseBody({ all: true })
-  const action = String(body.action ?? '')
+  const action = String(body.intent ?? '')
   const flash = (msg: string) => c.redirect(`/admin/menus?flash=${encodeURIComponent(msg)}`)
   const str = (v: unknown) => String(v ?? '').trim()
 

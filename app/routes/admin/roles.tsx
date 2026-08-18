@@ -12,7 +12,7 @@ import { FormField } from '../../components/form-field'
 import { Modal, ModalActions, ModalOpenButton } from '../../components/modal'
 import { PageHeader } from '../../components/page-header'
 import { Pagination } from '../../components/pagination'
-import { PERMISSIONS, PERMISSION_GROUPS, getRoleClosure } from '../../lib/rbac/permissions'
+import { PERMISSION_GROUPS, getRoleClosure } from '../../lib/rbac/permissions'
 import { db, schema } from '../../lib/db'
 import type { Context } from 'hono'
 import type { Permission, Role } from '../../lib/db/schema'
@@ -47,6 +47,14 @@ function buildRolesView(c: Context, extra: RolesExtra = {}) {
 
   const rolePerms = db.select().from(schema.rolePermissions).all()
   const permissions = db.select().from(schema.permissions).all()
+  // 权限选择器数据源：DB 全量权限（含 UI 自定义项）+ DB 分组目录（空库时回退内置常量）
+  const pickerPermissions = permissions
+    .map((p) => ({ name: p.name, description: p.description ?? '' }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const dbGroups = db.select().from(schema.permissionGroups).all()
+  const pickerGroups = dbGroups.length
+    ? dbGroups.map((g) => ({ key: g.key, name: g.name, icon: g.icon }))
+    : PERMISSION_GROUPS.map((g) => ({ key: g.key, name: g.name, icon: g.icon }))
   const userRoles = db.select().from(schema.userRoles).all()
   const permById = new Map(permissions.map((p) => [p.id, p]))
   const roleParentRows = db.select().from(schema.roleParents).all()
@@ -82,6 +90,8 @@ function buildRolesView(c: Context, extra: RolesExtra = {}) {
       rows={rows}
       roles={roles}
       usersCount={usersCount}
+      pickerPermissions={pickerPermissions}
+      pickerGroups={pickerGroups}
       q={q}
       page={page}
       totalPages={totalPages}
@@ -99,6 +109,8 @@ function RolesPage({
   rows,
   roles,
   usersCount,
+  pickerPermissions,
+  pickerGroups,
   q = '',
   page = 1,
   totalPages = 1,
@@ -112,6 +124,8 @@ function RolesPage({
   rows: Row[]
   roles: Role[]
   usersCount: Map<string, number>
+  pickerPermissions: { name: string; description: string }[]
+  pickerGroups: { key: string; name: string; icon: string }[]
   q?: string
   page?: number
   totalPages?: number
@@ -199,7 +213,7 @@ function RolesPage({
                   <ConfirmButton
                     message={`确定删除角色 ${role.name}？删除后不可恢复。`}
                     action="/admin/roles"
-                    fields={{ action: 'delete', roleId: role.id }}
+                    fields={{ intent: 'delete', roleId: role.id }}
                   />
                 )}
               </div>
@@ -229,7 +243,7 @@ function RolesPage({
       {/* 创建角色 modal */}
       <Modal id="create-role-modal" title="创建角色" open={openCreate} boxClass="max-w-3xl">
         <form method="post" action="/admin/roles" class="fieldset gap-3">
-          <input type="hidden" name="action" value="create" />
+          <input type="hidden" name="intent" value="create" />
           {error && (
             <div role="alert" class="alert alert-error alert-sm text-sm">
               {error}
@@ -262,8 +276,8 @@ function RolesPage({
           <fieldset class="fieldset mt-1">
             <legend class="fieldset-legend">权限</legend>
             <PermissionPicker
-              permissions={[...PERMISSIONS]}
-              groups={PERMISSION_GROUPS}
+              permissions={pickerPermissions}
+              groups={pickerGroups}
               selected={[]}
               name="permissions"
             />
@@ -287,7 +301,7 @@ function RolesPage({
             }
           >
             <form method="post" action="/admin/roles" class="fieldset gap-3">
-              <input type="hidden" name="action" value="update" />
+              <input type="hidden" name="intent" value="update" />
               <input type="hidden" name="roleId" value={role.id} />
               <FormField
                 label="角色名"
@@ -324,8 +338,8 @@ function RolesPage({
               <fieldset class="fieldset mt-1">
                 <legend class="fieldset-legend">权限</legend>
                 <PermissionPicker
-                  permissions={[...PERMISSIONS]}
-                  groups={PERMISSION_GROUPS}
+                  permissions={pickerPermissions}
+                  groups={pickerGroups}
                   selected={rolePerms.map((p) => p.name)}
                   name="permissions"
                 />
@@ -345,7 +359,7 @@ export default createRoute(requirePermission('role:read'), async (c) => {
 export const POST = createRoute(async (c) => {
   const perms = c.get('permissions') ?? new Set<string>()
   const body = await c.req.parseBody({ all: true })
-  const action = String(body.action ?? '')
+  const action = String(body.intent ?? '')
   const permissionNames = body.permissions
     ? Array.isArray(body.permissions)
       ? body.permissions.map(String)
@@ -407,6 +421,10 @@ export const POST = createRoute(async (c) => {
     const name = rawName.trim()
     const description = String(body.description ?? '').trim() || null
     if (!name) return c.redirect('/admin/roles?flash=error:角色名不能为空')
+    // 内置 admin 角色禁止改名（防锁死逻辑按名字 'admin' 定位管理员角色）
+    if (role.name === 'admin' && name !== 'admin') {
+      return c.redirect('/admin/roles?flash=error:内置 admin 角色不可改名')
+    }
     const nameClash = db
       .select()
       .from(schema.roles)
@@ -416,9 +434,9 @@ export const POST = createRoute(async (c) => {
       return c.redirect('/admin/roles?flash=error:该角色名已存在')
     }
     db.update(schema.roles).set({ name, description }).where(eq(schema.roles.id, roleId)).run()
-    const closure = getRoleClosure(roleId)
+    // 环检测：pr 的祖先闭包（含自身）若包含 roleId，则 roleId 是 pr 的后代，继承会成环
     const safeParents = parentRoles.filter(
-      (pr) => pr && pr !== roleId && existingRoleIds.has(pr) && !closure.has(pr),
+      (pr) => pr && pr !== roleId && existingRoleIds.has(pr) && !getRoleClosure(pr).has(roleId),
     )
     db.transaction((tx) => {
       tx.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, roleId)).run()
@@ -445,6 +463,9 @@ export const POST = createRoute(async (c) => {
     const roleId = String(body.roleId ?? '')
     const role = db.select().from(schema.roles).where(eq(schema.roles.id, roleId)).get()
     if (!role) return c.text('角色不存在', 404)
+    if (role.name === 'admin') {
+      return c.redirect('/admin/roles?flash=error:内置 admin 角色不可删除')
+    }
     const refs = db
       .select()
       .from(schema.userRoles)

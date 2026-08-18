@@ -10,6 +10,30 @@ import {
 } from '../lib/auth/session'
 import { db, schema } from '../lib/db'
 
+/**
+ * 登录防爆破限流（内存态，按邮箱计数）：
+ * 连续失败 5 次锁定 5 分钟；登录成功立即清零。进程重启即重置，对单实例部署足够。
+ */
+const LOGIN_MAX_ATTEMPTS = 5
+const LOGIN_LOCK_MS = 5 * 60 * 1000
+const loginAttempts = new Map<string, { count: number; lockedUntil: number }>()
+
+function loginLockRemaining(email: string): number {
+  const rec = loginAttempts.get(email)
+  if (!rec || rec.lockedUntil <= Date.now()) return 0
+  return Math.ceil((rec.lockedUntil - Date.now()) / 1000)
+}
+
+function recordLoginFailure(email: string): void {
+  const rec = loginAttempts.get(email) ?? { count: 0, lockedUntil: 0 }
+  rec.count += 1
+  if (rec.count >= LOGIN_MAX_ATTEMPTS) {
+    rec.lockedUntil = Date.now() + LOGIN_LOCK_MS
+    rec.count = 0
+  }
+  loginAttempts.set(email, rec)
+}
+
 function LoginForm({ error }: { error?: string }) {
   return (
     <div class="min-h-screen flex items-center justify-center p-4 bg-[radial-gradient(60%_50%_at_50%_0%,color-mix(in_oklab,var(--color-primary)_8%,transparent),transparent)]">
@@ -58,7 +82,15 @@ export const POST = createRoute(async (c) => {
     return c.render(<LoginForm error="请输入邮箱和密码" />)
   }
   const user = db.select().from(schema.users).where(eq(schema.users.email, email)).get()
+  const lockSec = loginLockRemaining(email)
+  if (lockSec > 0) {
+    c.status(429)
+    return c.render(
+      <LoginForm error={`失败次数过多，账号已临时锁定，请 ${Math.ceil(lockSec / 60)} 分钟后再试`} />,
+    )
+  }
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    recordLoginFailure(email)
     c.status(401)
     return c.render(<LoginForm error="邮箱或密码错误" />)
   }
@@ -66,6 +98,7 @@ export const POST = createRoute(async (c) => {
     c.status(403)
     return c.render(<LoginForm error="该账号已被停用，请联系管理员" />)
   }
+  loginAttempts.delete(email)
   const token = await createSession(user.id)
   setSessionCookie(c, token)
   return c.redirect('/')

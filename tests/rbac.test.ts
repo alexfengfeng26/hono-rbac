@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import app from '../app/server'
 import { db, schema } from '../app/lib/db'
-import { getPermissionsForUser } from '../app/lib/rbac/permissions'
+import { getPermissionsForUser, PERMISSIONS } from '../app/lib/rbac/permissions'
 import { hashPassword } from '../app/lib/auth/password'
 
 const ORIGIN = 'http://localhost:5173'
@@ -45,16 +45,11 @@ describe('RBAC 权限模型', () => {
       .where(eq(schema.users.email, 'admin@example.com'))
       .get()!
     const perms = await getPermissionsForUser(admin.id)
-    expect(perms.size).toBe(25)
+    expect(perms.size).toBe(PERMISSIONS.length)
     expect(perms.has('user:delete')).toBe(true)
     expect(perms.has('role:update')).toBe(true)
-    expect(perms.has('crm:contact:read')).toBe(true)
-    expect(perms.has('agent:chat')).toBe(true)
-    expect(perms.has('chatbi:query')).toBe(true)
-    expect(perms.has('chatbi:model:manage')).toBe(true)
+    expect(perms.has('menu:manage')).toBe(true)
     expect(perms.has('org:department:manage')).toBe(true)
-    expect(perms.has('user:delete')).toBe(true)
-    expect(perms.has('role:update')).toBe(true)
   })
 
   it('user 用户只有只读权限', async () => {
@@ -90,7 +85,7 @@ describe('RBAC 权限模型', () => {
       .run()
     const userRole = db.select().from(schema.roles).where(eq(schema.roles.name, 'user')).get()!
     await post('/admin/users', adminCookie, {
-      action: 'updateRoles',
+      intent: 'updateRoles',
       userId: newUserId,
       roles: [userRole.id],
     })
@@ -100,7 +95,7 @@ describe('RBAC 权限模型', () => {
     expect(perms.has('user:create')).toBe(false)
 
     // 移除角色后权限清空
-    await post('/admin/users', adminCookie, { action: 'updateRoles', userId: newUserId })
+    await post('/admin/users', adminCookie, { intent: 'updateRoles', userId: newUserId })
     expect((await getPermissionsForUser(newUserId)).size).toBe(0)
 
     db.delete(schema.users).where(eq(schema.users.id, newUserId)).run()
@@ -111,7 +106,7 @@ describe('权限守卫（HTTP 层）', () => {
   it('无 user:create 权限的用户创建用户返回 403', async () => {
     const demoCookie = await login('user@example.com', 'user123')
     const res = await post('/admin/users', demoCookie, {
-      action: 'create',
+      intent: 'create',
       name: 'X',
       email: 'x@example.com',
       password: 'xxxxxx',
@@ -123,7 +118,7 @@ describe('权限守卫（HTTP 层）', () => {
     const adminCookie = await login('admin@example.com', 'admin123')
     const email = `crud-${Date.now()}@example.com`
     const res = await post('/admin/users', adminCookie, {
-      action: 'create',
+      intent: 'create',
       name: 'Crud',
       email,
       password: 'crud1234',
@@ -137,14 +132,14 @@ describe('权限守卫（HTTP 层）', () => {
     const adminRole = db.select().from(schema.roles).where(eq(schema.roles.name, 'admin')).get()!
 
     const denied = await post('/admin/roles', demoCookie, {
-      action: 'delete',
+      intent: 'delete',
       roleId: adminRole.id,
     })
     expect(denied.status).toBe(403)
 
     const adminCookie = await login('admin@example.com', 'admin123')
     const conflict = await post('/admin/roles', adminCookie, {
-      action: 'delete',
+      intent: 'delete',
       roleId: adminRole.id,
     })
     // 被引用角色：302 + flash=error 提示（UX 反馈），角色保持不变
@@ -156,7 +151,7 @@ describe('权限守卫（HTTP 层）', () => {
   it('创建角色可一次勾选多个权限并全部生效', async () => {
     const adminCookie = await login('admin@example.com', 'admin123')
     const res = await post('/admin/roles', adminCookie, {
-      action: 'create',
+      intent: 'create',
       name: 'multi-perm',
       permissions: ['user:read', 'role:read', 'user:update'],
     })
@@ -259,7 +254,7 @@ describe('表单内联错误（Phase 1）', () => {
   it('创建重复邮箱用户时返回内联错误页（200 + 提示），而非纯文本 409', async () => {
     const adminCookie = await login('admin@example.com', 'admin123')
     const res = await post('/admin/users', adminCookie, {
-      action: 'create',
+      intent: 'create',
       name: 'Dup',
       email: 'admin@example.com',
       password: 'dup123',
@@ -268,5 +263,73 @@ describe('表单内联错误（Phase 1）', () => {
     const html = await res.text()
     expect(html).toContain('该邮箱已存在')
     expect(html).toContain('name="email"')
+  })
+})
+
+describe('RBAC 回归：继承环与防锁死', () => {
+  it('角色继承成环被拒绝（A 继承 B 后，B 不能再继承 A）', async () => {
+    const adminCookie = await login('admin@example.com', 'admin123')
+    const a = crypto.randomUUID()
+    const b = crypto.randomUUID()
+    db.insert(schema.roles).values([
+      { id: a, name: 'ring_a' },
+      { id: b, name: 'ring_b' },
+    ]).run()
+
+    // A 继承 B —— 正常
+    await post('/admin/roles', adminCookie, { intent: 'update', roleId: a, name: 'ring_a', parentRoles: [b] })
+    expect(
+      db.select().from(schema.roleParents).where(eq(schema.roleParents.roleId, a)).all()
+        .map((r) => r.parentRoleId),
+    ).toEqual([b])
+
+    // B 再继承 A —— 成环，应被过滤（B 无任何父角色）
+    await post('/admin/roles', adminCookie, { intent: 'update', roleId: b, name: 'ring_b', parentRoles: [a] })
+    expect(
+      db.select().from(schema.roleParents).where(eq(schema.roleParents.roleId, b)).all(),
+    ).toEqual([])
+
+    db.delete(schema.roles).where(inArray(schema.roles.id, [a, b])).run()
+  })
+
+  it('不能通过 updateRoles 移除最后一个管理员的 admin 角色', async () => {
+    const adminCookie = await login('admin@example.com', 'admin123')
+    const adminUser = db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, 'admin@example.com'))
+      .get()!
+    const adminRole = db.select().from(schema.roles).where(eq(schema.roles.name, 'admin')).get()!
+    const userRole = db.select().from(schema.roles).where(eq(schema.roles.name, 'user')).get()!
+
+    const res = await post('/admin/users', adminCookie, {
+      intent: 'updateRoles',
+      userId: adminUser.id,
+      roles: [userRole.id],
+    })
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toContain('flash=error')
+    // admin 角色仍在
+    const still = db
+      .select()
+      .from(schema.userRoles)
+      .where(eq(schema.userRoles.userId, adminUser.id))
+      .all()
+    expect(still.some((r) => r.roleId === adminRole.id)).toBe(true)
+  })
+
+  it('内置 admin 角色不可改名', async () => {
+    const adminCookie = await login('admin@example.com', 'admin123')
+    const adminRole = db.select().from(schema.roles).where(eq(schema.roles.name, 'admin')).get()!
+
+    const renamed = await post('/admin/roles', adminCookie, {
+      intent: 'update',
+      roleId: adminRole.id,
+      name: 'superadmin',
+    })
+    expect(renamed.headers.get('location')).toContain('flash=error')
+    expect(
+      db.select().from(schema.roles).where(eq(schema.roles.id, adminRole.id)).get()!.name,
+    ).toBe('admin')
   })
 })

@@ -57,7 +57,7 @@ function SessionsPage({ sessions, currentToken }: { sessions: Session[]; current
                     <ConfirmButton
                       message="确定注销该设备的登录会话？该设备将被迫下线。"
                       action="/admin/sessions"
-                      fields={{ action: 'revoke', sessionId: s.id }}
+                      fields={{ intent: 'revoke', sessionId: s.id }}
                       label="注销"
                     />
                   )}
@@ -84,7 +84,7 @@ export default createRoute(requireAuth, async (c) => {
 export const POST = createRoute(requireAuth, async (c) => {
   const user = c.get('user')!
   const body = await c.req.parseBody()
-  const action = String(body.action ?? '')
+  const action = String(body.intent ?? '')
   const currentToken = getSessionToken(c) ?? ''
 
   if (action === 'revoke') {
