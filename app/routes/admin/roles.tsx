@@ -7,6 +7,7 @@ import ConfirmButton from '../../islands/confirm-button'
 import PermissionPicker from '../../islands/permission-picker'
 import { Badge } from '../../components/badge'
 import { EmptyState } from '../../components/empty-state'
+import { FilterBar, FilterField } from '../../components/filter-bar'
 import { Icon } from '../../components/icon'
 import { FormField } from '../../components/form-field'
 import { Modal, ModalActions, ModalOpenButton } from '../../components/modal'
@@ -14,6 +15,12 @@ import { PageHeader } from '../../components/page-header'
 import { Pagination } from '../../components/pagination'
 import { PERMISSION_GROUPS, getRoleClosure } from '../../lib/rbac/permissions'
 import { db, schema } from '../../lib/db'
+import {
+  buildQueryHref,
+  flashRedirect,
+  forbidUnless,
+  parseListParams,
+} from '../../lib/admin/helpers'
 import type { Context } from 'hono'
 import type { Permission, Role } from '../../lib/db/schema'
 
@@ -31,15 +38,14 @@ type RolesExtra = {
 function buildRolesView(c: Context, extra: RolesExtra = {}) {
   const perms = c.get('permissions') as PermissionMap
   const roles = db.select().from(schema.roles).orderBy(schema.roles.name).all()
-  const q = String(c.req.query('q') ?? '').trim().toLowerCase()
-  const requestedPage = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1)
+  const { q, page: requestedPage } = parseListParams(c)
 
-  let rolesAll = db.select().from(schema.roles).orderBy(schema.roles.name).all()
-  if (q) {
-    rolesAll = rolesAll.filter(
-      (r) => r.name.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q),
-    )
-  }
+  // 复用上面的 roles，避免重复查询
+  const rolesAll = q
+    ? roles.filter(
+        (r) => r.name.toLowerCase().includes(q) || (r.description ?? '').toLowerCase().includes(q),
+      )
+    : roles
   const total = rolesAll.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const page = Math.min(requestedPage, totalPages)
@@ -77,12 +83,7 @@ function buildRolesView(c: Context, extra: RolesExtra = {}) {
     usersCount.set(ur.roleId, (usersCount.get(ur.roleId) ?? 0) + 1)
   }
 
-  const buildHref = (p: number) => {
-    const params = new URLSearchParams()
-    if (q) params.set('q', q)
-    params.set('page', String(p))
-    return `/admin/roles?${params.toString()}`
-  }
+  const buildHref = (p: number) => buildQueryHref('/admin/roles', { q }, { page: String(p) })
 
   return (
     <RolesPage
@@ -150,9 +151,8 @@ function RolesPage({
       />
 
       {/* 搜索 */}
-      <form method="get" action="/admin/roles" class="flex flex-wrap items-end gap-3 mb-4">
-        <div class="flex flex-col gap-1">
-          <label class="text-xs text-base-content/60">搜索</label>
+      <FilterBar action="/admin/roles" filtered={!!q} submitLabel="搜索">
+        <FilterField label="搜索">
           <input
             type="search"
             name="q"
@@ -161,16 +161,8 @@ function RolesPage({
             class="input input-sm w-64"
             aria-label="搜索角色"
           />
-        </div>
-        <button type="submit" class="btn btn-sm btn-outline">
-          搜索
-        </button>
-        {q && (
-          <a href="/admin/roles" class="btn btn-sm btn-ghost">
-            清除
-          </a>
-        )}
-      </form>
+        </FilterField>
+      </FilterBar>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {rows.map(({ role, permissions: rolePerms, parentRoleIds }) => (
@@ -375,7 +367,8 @@ export const POST = createRoute(async (c) => {
   )
 
   if (action === 'create') {
-    if (!perms.has('role:create')) return c.text('403 Forbidden', 403)
+    const deny = forbidUnless(perms, 'role:create')
+    if (deny) return deny
     const rawName = String(body.name ?? '')
     const name = rawName.trim()
     const rawDescription = String(body.description ?? '')
@@ -409,21 +402,22 @@ export const POST = createRoute(async (c) => {
         tx.insert(schema.roleParents).values({ roleId: id, parentRoleId: pr }).run()
       }
     })
-    return c.redirect('/admin/roles?flash=success:角色已创建')
+    return flashRedirect(c, '/admin/roles', 'success', '角色已创建')
   }
 
   if (action === 'update') {
-    if (!perms.has('role:update')) return c.text('403 Forbidden', 403)
+    const deny = forbidUnless(perms, 'role:update')
+    if (deny) return deny
     const roleId = String(body.roleId ?? '')
     const role = db.select().from(schema.roles).where(eq(schema.roles.id, roleId)).get()
     if (!role) return c.text('角色不存在', 404)
     const rawName = String(body.name ?? '')
     const name = rawName.trim()
     const description = String(body.description ?? '').trim() || null
-    if (!name) return c.redirect('/admin/roles?flash=error:角色名不能为空')
+    if (!name) return flashRedirect(c, '/admin/roles', 'error', '角色名不能为空')
     // 内置 admin 角色禁止改名（防锁死逻辑按名字 'admin' 定位管理员角色）
     if (role.name === 'admin' && name !== 'admin') {
-      return c.redirect('/admin/roles?flash=error:内置 admin 角色不可改名')
+      return flashRedirect(c, '/admin/roles', 'error', '内置 admin 角色不可改名')
     }
     const nameClash = db
       .select()
@@ -431,7 +425,7 @@ export const POST = createRoute(async (c) => {
       .where(eq(schema.roles.name, name))
       .get()
     if (nameClash && nameClash.id !== roleId) {
-      return c.redirect('/admin/roles?flash=error:该角色名已存在')
+      return flashRedirect(c, '/admin/roles', 'error', '该角色名已存在')
     }
     db.update(schema.roles).set({ name, description }).where(eq(schema.roles.id, roleId)).run()
     // 环检测：pr 的祖先闭包（含自身）若包含 roleId，则 roleId 是 pr 的后代，继承会成环
@@ -455,16 +449,17 @@ export const POST = createRoute(async (c) => {
         tx.insert(schema.roleParents).values({ roleId, parentRoleId: pr }).run()
       }
     })
-    return c.redirect('/admin/roles?flash=success:角色已更新')
+    return flashRedirect(c, '/admin/roles', 'success', '角色已更新')
   }
 
   if (action === 'delete') {
-    if (!perms.has('role:delete')) return c.text('403 Forbidden', 403)
+    const deny = forbidUnless(perms, 'role:delete')
+    if (deny) return deny
     const roleId = String(body.roleId ?? '')
     const role = db.select().from(schema.roles).where(eq(schema.roles.id, roleId)).get()
     if (!role) return c.text('角色不存在', 404)
     if (role.name === 'admin') {
-      return c.redirect('/admin/roles?flash=error:内置 admin 角色不可删除')
+      return flashRedirect(c, '/admin/roles', 'error', '内置 admin 角色不可删除')
     }
     const refs = db
       .select()
@@ -472,7 +467,7 @@ export const POST = createRoute(async (c) => {
       .where(eq(schema.userRoles.roleId, roleId))
       .all()
     if (refs.length) {
-      return c.redirect('/admin/roles?flash=error:该角色仍被用户引用，无法删除')
+      return flashRedirect(c, '/admin/roles', 'error', '该角色仍被用户引用，无法删除')
     }
     const dependents = db
       .select()
@@ -488,12 +483,10 @@ export const POST = createRoute(async (c) => {
         .filter((r) => depRoleIds.has(r.id))
         .map((r) => r.name)
         .join('、')
-      return c.redirect(
-        `/admin/roles?flash=${encodeURIComponent(`error:该角色正被 ${depNames} 继承，无法删除`)}`,
-      )
+      return flashRedirect(c, '/admin/roles', 'error', `该角色正被 ${depNames} 继承，无法删除`)
     }
     db.delete(schema.roles).where(eq(schema.roles.id, roleId)).run()
-    return c.redirect('/admin/roles?flash=success:角色已删除')
+    return flashRedirect(c, '/admin/roles', 'success', '角色已删除')
   }
 
   return c.text('未知操作', 400)

@@ -6,6 +6,7 @@ import { getSessionToken } from '../../lib/auth/session'
 import { PageHeader } from '../../components/page-header'
 import { FormField } from '../../components/form-field'
 import { db, schema } from '../../lib/db'
+import { flashRedirect } from '../../lib/admin/helpers'
 
 function ProfileForm({
   error,
@@ -101,5 +102,5 @@ export const POST = createRoute(requireAuth, async (c) => {
     .where(and(eq(schema.sessions.userId, user.id), ne(schema.sessions.id, currentToken)))
     .run()
 
-  return c.redirect('/admin/profile?flash=success:密码已更新，其它设备已下线')
+  return flashRedirect(c, '/admin/profile', 'success', '密码已更新，其它设备已下线')
 })

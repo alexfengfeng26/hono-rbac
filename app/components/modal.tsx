@@ -31,6 +31,36 @@ export function ModalOpenButton({
   )
 }
 
+/** 单例弹窗触发按钮：values 在打开时由 islands/row-modal.tsx 填入目标弹窗表单 */
+export function RowModalOpenButton({
+  id,
+  values,
+  label,
+  className = 'btn btn-ghost btn-xs',
+  children,
+}: {
+  /** 目标 <dialog> 的 id */
+  id: string
+  /** 打开时按 name 填入表单的字段值（数组对应同名 checkbox 组） */
+  values: Record<string, unknown>
+  /** 可选，写入弹窗内 [data-row-modal-label] 占位的文本（如邮箱/名称） */
+  label?: string
+  className?: string
+  children: Node
+}) {
+  return (
+    <button
+      type="button"
+      class={className}
+      data-row-modal-open={id}
+      data-values={JSON.stringify(values)}
+      {...(label !== undefined ? { 'data-label': label } : {})}
+    >
+      {children}
+    </button>
+  )
+}
+
 /**
  * Modal 容器：基于原生 <dialog>，自带焦点陷阱与 ESC 关闭。
  * 打开/关闭由渲染器注入的全局脚本统一处理（data-open-dialog / data-close-dialog / .modal-backdrop）。

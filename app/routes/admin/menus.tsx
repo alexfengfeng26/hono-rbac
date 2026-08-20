@@ -12,6 +12,7 @@ import { Modal, ModalActions, ModalOpenButton } from '../../components/modal'
 import { PageHeader } from '../../components/page-header'
 import { type PermissionMap } from '../../lib/rbac/permissions'
 import { db, schema } from '../../lib/db'
+import { flashRedirect, forbidUnless } from '../../lib/admin/helpers'
 import type { Menu } from '../../lib/db/schema'
 
 type FormState = {
@@ -365,10 +366,12 @@ function swapOrder(rows: { id: string; order: number }[], id: string, dir: 1 | -
 
 export const POST = createRoute(async (c) => {
   const perms = c.get('permissions') as PermissionMap
-  if (!perms.has('menu:manage')) return c.text('403 Forbidden', 403)
+  const deny = forbidUnless(perms, 'menu:manage')
+  if (deny) return deny
   const body = await c.req.parseBody({ all: true })
   const action = String(body.intent ?? '')
-  const flash = (msg: string) => c.redirect(`/admin/menus?flash=${encodeURIComponent(msg)}`)
+  const flash = (kind: 'success' | 'error', msg: string) =>
+    flashRedirect(c, '/admin/menus', kind, msg)
   const str = (v: unknown) => String(v ?? '').trim()
   const validPermNames = new Set(
     db.select({ name: schema.permissions.name }).from(schema.permissions).all().map((r) => r.name)
@@ -381,7 +384,7 @@ export const POST = createRoute(async (c) => {
   switch (action) {
     case 'groupCreate': {
       const name = str(body.name)
-      if (!name) return flash('error:分组名称不能为空')
+      if (!name) return flash('error', '分组名称不能为空')
       const max = db
         .select()
         .from(schema.menus)
@@ -391,20 +394,20 @@ export const POST = createRoute(async (c) => {
       db.insert(schema.menus)
         .values({ id: randomUUID(), name, order: max + 1, status: 'active' })
         .run()
-      return flash('success:分组已创建')
+      return flash('success', '分组已创建')
     }
     case 'groupUpdate': {
       const id = str(body.id)
       const name = str(body.name)
-      if (!id || !name) return flash('error:参数不完整')
+      if (!id || !name) return flash('error', '参数不完整')
       db.update(schema.menus).set({ name }).where(eq(schema.menus.id, id)).run()
-      return flash('success:分组已重命名')
+      return flash('success', '分组已重命名')
     }
     case 'groupDelete': {
       const id = str(body.id)
-      if (!id) return flash('error:参数不完整')
+      if (!id) return flash('error', '参数不完整')
       db.delete(schema.menus).where(eq(schema.menus.id, id)).run() // FK 级联清子项
-      return flash('success:分组及其菜单项已删除')
+      return flash('success', '分组及其菜单项已删除')
     }
     case 'groupMoveUp':
     case 'groupMoveDown': {
@@ -415,17 +418,17 @@ export const POST = createRoute(async (c) => {
         .all()
         .filter((m) => !m.parentId)
         .sort((a, b) => a.order - b.order)
-      if (!swapOrder(groups, id, action === 'groupMoveUp' ? -1 : 1)) return flash('error:已在边界')
-      return flash('success:已移动')
+      if (!swapOrder(groups, id, action === 'groupMoveUp' ? -1 : 1)) return flash('error', '已在边界')
+      return flash('success', '已移动')
     }
     case 'itemCreate': {
       const parentId = str(body.parentId)
       const name = str(body.name)
       const href = str(body.href)
-      if (!parentId || !name || !href) return flash('error:名称与链接必填')
-      if (!href.startsWith('/')) return flash('error:链接必须以 / 开头')
+      if (!parentId || !name || !href) return flash('error', '名称与链接必填')
+      if (!href.startsWith('/')) return flash('error', '链接必须以 / 开头')
       if (db.select().from(schema.menus).where(eq(schema.menus.href, href)).get())
-        return flash('error:该链接已存在')
+        return flash('error', '该链接已存在')
       const icon = ICON_NAMES.includes(str(body.icon) as IconName) ? str(body.icon) : 'menu'
       const requiredPermission = validPerm(body.requiredPermission)
       const status = str(body.status) === 'hidden' ? 'hidden' : 'active'
@@ -438,16 +441,16 @@ export const POST = createRoute(async (c) => {
       db.insert(schema.menus)
         .values({ id: randomUUID(), parentId, name, href, icon, requiredPermission, order, status })
         .run()
-      return flash('success:菜单项已创建')
+      return flash('success', '菜单项已创建')
     }
     case 'itemUpdate': {
       const id = str(body.id)
       const name = str(body.name)
       const href = str(body.href)
-      if (!id || !name || !href) return flash('error:名称与链接必填')
-      if (!href.startsWith('/')) return flash('error:链接必须以 / 开头')
+      if (!id || !name || !href) return flash('error', '名称与链接必填')
+      if (!href.startsWith('/')) return flash('error', '链接必须以 / 开头')
       const dup = db.select().from(schema.menus).all().find((m) => m.href === href && m.id !== id)
-      if (dup) return flash('error:该链接已被其他菜单使用')
+      if (dup) return flash('error', '该链接已被其他菜单使用')
       const icon = ICON_NAMES.includes(str(body.icon) as IconName) ? str(body.icon) : 'menu'
       const requiredPermission = validPerm(body.requiredPermission)
       const status = str(body.status) === 'hidden' ? 'hidden' : 'active'
@@ -455,29 +458,29 @@ export const POST = createRoute(async (c) => {
         .set({ name, href, icon, requiredPermission, status })
         .where(eq(schema.menus.id, id))
         .run()
-      return flash('success:菜单项已更新')
+      return flash('success', '菜单项已更新')
     }
     case 'itemDelete': {
       const id = str(body.id)
-      if (!id) return flash('error:参数不完整')
+      if (!id) return flash('error', '参数不完整')
       db.delete(schema.menus).where(eq(schema.menus.id, id)).run()
-      return flash('success:菜单项已删除')
+      return flash('success', '菜单项已删除')
     }
     case 'itemMoveUp':
     case 'itemMoveDown': {
       const id = str(body.id)
       const target = db.select().from(schema.menus).where(eq(schema.menus.id, id)).get()
-      if (!target) return flash('error:菜单项不存在')
+      if (!target) return flash('error', '菜单项不存在')
       const rows = db
         .select({ id: schema.menus.id, parentId: schema.menus.parentId, order: schema.menus.order })
         .from(schema.menus)
         .all()
         .filter((m) => m.parentId === target.parentId)
         .sort((a, b) => a.order - b.order)
-      if (!swapOrder(rows, id, action === 'itemMoveUp' ? -1 : 1)) return flash('error:已在边界')
-      return flash('success:已移动')
+      if (!swapOrder(rows, id, action === 'itemMoveUp' ? -1 : 1)) return flash('error', '已在边界')
+      return flash('success', '已移动')
     }
     default:
-      return flash('error:未知操作')
+      return flash('error', '未知操作')
   }
 })

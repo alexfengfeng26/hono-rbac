@@ -7,11 +7,13 @@ import ConfirmButton from '../../islands/confirm-button'
 import { Icon } from '../../components/icon'
 import { Badge } from '../../components/badge'
 import { EmptyState } from '../../components/empty-state'
+import { FilterBar, FilterField } from '../../components/filter-bar'
 import { FormField } from '../../components/form-field'
 import { Modal, ModalActions, ModalOpenButton } from '../../components/modal'
 import { PageHeader } from '../../components/page-header'
 import { validatePermissionName } from '../../lib/rbac/permissions'
 import { db, schema } from '../../lib/db'
+import { flashRedirect, forbidUnless, parseListParams } from '../../lib/admin/helpers'
 import type { Context } from 'hono'
 import type { Permission, PermissionGroup } from '../../lib/db/schema'
 
@@ -23,7 +25,7 @@ type PermsExtra = {
 
 function buildPermsView(c: Context, extra: PermsExtra = {}) {
   const perms = c.get('permissions') as PermissionMap
-  const q = String(c.req.query('q') ?? '').trim().toLowerCase()
+  const { q } = parseListParams(c)
 
   let permsAll = db.select().from(schema.permissions).orderBy(schema.permissions.name).all()
   if (q) {
@@ -210,9 +212,8 @@ function PermsPage({
       />
 
       {/* 搜索 */}
-      <form method="get" action="/admin/permissions" class="flex flex-wrap items-end gap-3 mb-4">
-        <div class="flex flex-col gap-1">
-          <label class="text-xs text-base-content/60">搜索</label>
+      <FilterBar action="/admin/permissions" filtered={!!q} submitLabel="搜索">
+        <FilterField label="搜索">
           <input
             type="search"
             name="q"
@@ -221,16 +222,8 @@ function PermsPage({
             class="input input-sm w-64"
             aria-label="搜索权限"
           />
-        </div>
-        <button type="submit" class="btn btn-sm btn-outline">
-          搜索
-        </button>
-        {q && (
-          <a href="/admin/permissions" class="btn btn-sm btn-ghost">
-            清除
-          </a>
-        )}
-      </form>
+        </FilterField>
+      </FilterBar>
 
       {!anyPerms && (
         <EmptyState
@@ -420,7 +413,8 @@ export const POST = createRoute(async (c) => {
   const action = String(body.intent ?? '')
 
   if (action === 'create') {
-    if (!perms.has('role:update')) return c.text('403 Forbidden', 403)
+    const deny = forbidUnless(perms, 'role:update')
+    if (deny) return deny
     const rawName = String(body.name ?? '')
     const description = String(body.description ?? '').trim() || null
     const nameError = validatePermissionName(rawName)
@@ -445,11 +439,12 @@ export const POST = createRoute(async (c) => {
     }
     const groupId = resolveGroupId(String(body.groupId ?? ''))
     db.insert(schema.permissions).values({ id: randomUUID(), name, description, groupId }).run()
-    return c.redirect('/admin/permissions?flash=success:权限已创建')
+    return flashRedirect(c, '/admin/permissions', 'success', '权限已创建')
   }
 
   if (action === 'update') {
-    if (!perms.has('role:update')) return c.text('403 Forbidden', 403)
+    const deny = forbidUnless(perms, 'role:update')
+    if (deny) return deny
     const permissionId = String(body.permissionId ?? '')
     const rawName = String(body.name ?? '')
     const description = String(body.description ?? '').trim() || null
@@ -460,7 +455,7 @@ export const POST = createRoute(async (c) => {
       .get()
     if (!perm) return c.text('权限不存在', 404)
     const nameError = validatePermissionName(rawName)
-    if (nameError) return c.redirect(`/admin/permissions?flash=${encodeURIComponent('error:' + nameError)}`)
+    if (nameError) return flashRedirect(c, '/admin/permissions', 'error', nameError)
     const name = rawName.trim().toLowerCase()
     const clash = db
       .select()
@@ -468,7 +463,7 @@ export const POST = createRoute(async (c) => {
       .where(eq(schema.permissions.name, name))
       .get()
     if (clash && clash.id !== permissionId) {
-      return c.redirect('/admin/permissions?flash=error:该权限名已存在')
+      return flashRedirect(c, '/admin/permissions', 'error', '该权限名已存在')
     }
     const groupId = resolveGroupId(String(body.groupId ?? ''))
     db.transaction((tx) => {
@@ -477,11 +472,12 @@ export const POST = createRoute(async (c) => {
         tx.update(schema.menus).set({ requiredPermission: name }).where(eq(schema.menus.requiredPermission, perm.name)).run()
       }
     })
-    return c.redirect('/admin/permissions?flash=success:权限已更新')
+    return flashRedirect(c, '/admin/permissions', 'success', '权限已更新')
   }
 
   if (action === 'delete') {
-    if (!perms.has('role:delete')) return c.text('403 Forbidden', 403)
+    const deny = forbidUnless(perms, 'role:delete')
+    if (deny) return deny
     const permissionId = String(body.permissionId ?? '')
     const perm = db
       .select()
@@ -495,7 +491,7 @@ export const POST = createRoute(async (c) => {
       .where(eq(schema.rolePermissions.permissionId, permissionId))
       .all()
     if (refs.length) {
-      return c.redirect('/admin/permissions?flash=error:该权限仍被角色引用，无法删除')
+      return flashRedirect(c, '/admin/permissions', 'error', '该权限仍被角色引用，无法删除')
     }
     const menuRefs = db
       .select()
@@ -503,10 +499,10 @@ export const POST = createRoute(async (c) => {
       .where(eq(schema.menus.requiredPermission, perm.name))
       .all()
     if (menuRefs.length) {
-      return c.redirect('/admin/permissions?flash=error:该权限仍被菜单引用，无法删除')
+      return flashRedirect(c, '/admin/permissions', 'error', '该权限仍被菜单引用，无法删除')
     }
     db.delete(schema.permissions).where(eq(schema.permissions.id, permissionId)).run()
-    return c.redirect('/admin/permissions?flash=success:权限已删除')
+    return flashRedirect(c, '/admin/permissions', 'success', '权限已删除')
   }
 
   return c.text('未知操作', 400)

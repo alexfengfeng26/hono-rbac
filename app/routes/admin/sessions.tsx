@@ -7,14 +7,10 @@ import { Icon } from '../../components/icon'
 import { PageHeader } from '../../components/page-header'
 import ConfirmButton from '../../islands/confirm-button'
 import { db, schema } from '../../lib/db'
+import { flashRedirect, fmtDateTime } from '../../lib/admin/helpers'
 import type { Session } from '../../lib/db/schema'
 
-function fmt(ts: number | Date | undefined): string {
-  if (!ts) return '—'
-  const d = ts instanceof Date ? ts : new Date(ts)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString('zh-CN', { hour12: false })
-}
+const fmt = fmtDateTime
 
 function SessionsPage({ sessions, currentToken }: { sessions: Session[]; currentToken: string }) {
   const sorted = [...sessions].sort(
@@ -90,7 +86,7 @@ export const POST = createRoute(requireAuth, async (c) => {
   if (action === 'revoke') {
     const sessionId = String(body.sessionId ?? '')
     if (!sessionId || sessionId === currentToken) {
-      return c.redirect('/admin/sessions?flash=error:无法注销当前会话')
+      return flashRedirect(c, '/admin/sessions', 'error', '无法注销当前会话')
     }
     const target = db
       .select()
@@ -98,10 +94,10 @@ export const POST = createRoute(requireAuth, async (c) => {
       .where(eq(schema.sessions.id, sessionId))
       .get()
     if (!target || target.userId !== user.id) {
-      return c.redirect('/admin/sessions?flash=error:会话不存在')
+      return flashRedirect(c, '/admin/sessions', 'error', '会话不存在')
     }
     db.delete(schema.sessions).where(eq(schema.sessions.id, sessionId)).run()
-    return c.redirect('/admin/sessions?flash=success:已注销该会话')
+    return flashRedirect(c, '/admin/sessions', 'success', '已注销该会话')
   }
 
   return c.redirect('/admin/sessions')

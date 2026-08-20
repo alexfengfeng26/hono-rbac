@@ -43,8 +43,9 @@
 - **通知中心**：当前用户最近 20 条站内通知，支持全部已读
 - **主题**：light / dark / corporate / cupcake / nord / synthwave，本地持久化，避免闪屏
 - **侧栏**：可折叠为图标模式；分组可收起；移动端抽屉
-- **Toast**：URL `?flash=success:消息` 反馈；批量停用支持一键撤销
-- **搜索 / 分页 / 排序**：用户、角色、权限列表
+- **Toast**：URL `?flash=success:消息` 反馈（统一由 `flashRedirect` 生成，全量 URL 编码）；批量停用支持一键撤销
+- **搜索 / 分页 / 排序**：用户、角色、权限列表（统一的筛选栏 `FilterBar` 与排序表头 `SortHeader`）
+- **行编辑弹窗单例**：列表页共用 1 个弹窗 DOM，打开时由 `row-modal` island 按行数据填充，不随行数膨胀
 - **空状态 / 面包屑 / 确认对话框 / 表单内联错误**
 
 ## 技术栈
@@ -59,7 +60,7 @@
 | 构建 | Vite 8（client + SSR 两步构建，`@hono/vite-build/node`） |
 | 测试 | Vitest 4，内存 SQLite |
 
-交互热点（命令面板、通知中心、权限选择器、批量操作、确认按钮、Toast）以 HonoX **Islands** 形式在客户端水合；页面主体走服务端渲染 + 原生 `<form>` POST，避免引入重量级前端状态库。
+交互热点（命令面板、通知中心、权限选择器、批量操作、确认按钮、行编辑弹窗、Toast）以 HonoX **Islands** 形式在客户端水合；页面主体走服务端渲染 + 原生 `<form>` POST，避免引入重量级前端状态库。
 
 ## 架构
 
@@ -123,10 +124,11 @@ app/
   client.ts                 # Islands 客户端入口
   server.ts                 # 启动：ensure* + createApp
   style.css                 # Tailwind / daisyUI 主题与密度
-  components/               # 无状态展示组件（图标、表格头、分页、Modal…）
-  islands/                  # 客户端水合组件
+  components/               # 无状态展示组件（图标、筛选栏、排序表头、分页、Modal…）
+  islands/                  # 客户端水合组件（含 row-modal 行编辑单例弹窗）
   lib/
     env.ts                  # 零依赖 .env 加载
+    admin/helpers.ts        # 列表页公共助手：flashRedirect / parseListParams / buildQueryHref / parseIds / forbidUnless / fmtDate(Time)
     auth/                   # 密码（scrypt）、会话、守卫
     db/                     # schema、连接、迁移、seed、SQL 日志
     rbac/                   # 权限点、角色闭包、菜单树
@@ -141,6 +143,15 @@ drizzle/                    # 迁移 SQL
 public/                     # favicon、theme.js、预设头像
 tests/                      # Vitest：认证、RBAC、菜单、守卫、SQL 日志
 ```
+
+### 列表页开发套件
+
+新增列表页（如陪玩业务的类目 / 服务 / 订单）直接复用现成套件，以 `admin/users.tsx` 为样板：
+
+- `app/lib/admin/helpers.ts`：`parseListParams`（q/page/sort/dir 归一化）、`buildQueryHref`（翻页与排序链接）、`flashRedirect`（操作反馈）、`parseIds`（批量 ids）、`forbidUnless`（POST 权限检查一行式）
+- `app/components/filter-bar.tsx`：`FilterBar` + `FilterField` 筛选表单
+- `app/components/data-table.tsx`：`SortHeader` 排序表头 + `EmptyRow` 空态行
+- `app/islands/row-modal.tsx` + `RowModalOpenButton`（`components/modal.tsx`）：行编辑单例弹窗，按钮 `data-values` 携带行数据，island 打开时填充表单
 
 ## 快速开始
 
@@ -237,6 +248,7 @@ npm test           # vitest run，使用内存 SQLite + seed
 1. 在 `PERMISSIONS` / `PERMISSION_GROUPS` 增加业务权限点（启动时幂等注册）
 2. 用菜单管理把新路由挂到侧栏，并设置 `requiredPermission`
 3. 在 `schema.ts` 增加业务表，走 Drizzle 迁移
-4. 用 `notifications` 投递订单、提现等事件
+4. 列表页直接用「列表页开发套件」（`lib/admin/helpers.ts` + `FilterBar` + `SortHeader` + `row-modal`），以 `admin/users.tsx` 为样板
+5. 用 `notifications` 投递订单、提现等事件
 
 部门树可映射为「机构 / 工作室」；角色继承适合「运营主管继承运营专员权限」这类层级。

@@ -9,6 +9,7 @@ import { FormField } from '../../components/form-field'
 import { Modal, ModalActions, ModalOpenButton } from '../../components/modal'
 import { PageHeader } from '../../components/page-header'
 import { db, schema } from '../../lib/db'
+import { flashRedirect } from '../../lib/admin/helpers'
 import type { Context } from 'hono'
 import type { Department } from '../../lib/db/schema'
 
@@ -260,11 +261,11 @@ export const POST = createRoute(requireAuth, requirePermission('org:department:m
     // 校验父级存在
     if (parentId) {
       const p = db.select().from(schema.departments).where(eq(schema.departments.id, parentId)).get()
-      if (!p) return c.redirect('/admin/departments?flash=error:上级部门不存在')
+      if (!p) return flashRedirect(c, '/admin/departments', 'error', '上级部门不存在')
     }
     const order = db.select().from(schema.departments).all().length
     db.insert(schema.departments).values({ id: randomUUID(), name: rawName, parentId, order }).run()
-    return c.redirect('/admin/departments?flash=success:部门已创建')
+    return flashRedirect(c, '/admin/departments', 'success', '部门已创建')
   }
 
   if (action === 'update') {
@@ -273,19 +274,19 @@ export const POST = createRoute(requireAuth, requirePermission('org:department:m
     if (!dept) return c.text('部门不存在', 404)
     const rawName = String(body.name ?? '').trim()
     const parentId = body.parentId ? String(body.parentId) : null
-    if (!rawName) return c.redirect('/admin/departments?flash=error:部门名称不能为空')
+    if (!rawName) return flashRedirect(c, '/admin/departments', 'error', '部门名称不能为空')
     // 防环：新父级不能是「被移动部门自身或其子树成员」（挂到自身/下级均拦截）
     if (parentId) {
       const all = db.select().from(schema.departments).all()
       const subtree = deptSubtree(all, deptId)
       if (subtree.has(parentId)) {
-        return c.redirect('/admin/departments?flash=error:不能将部门挂到自身或下级之下')
+        return flashRedirect(c, '/admin/departments', 'error', '不能将部门挂到自身或下级之下')
       }
       const p = db.select().from(schema.departments).where(eq(schema.departments.id, parentId)).get()
-      if (!p) return c.redirect('/admin/departments?flash=error:上级部门不存在')
+      if (!p) return flashRedirect(c, '/admin/departments', 'error', '上级部门不存在')
     }
     db.update(schema.departments).set({ name: rawName, parentId }).where(eq(schema.departments.id, deptId)).run()
-    return c.redirect('/admin/departments?flash=success:部门已更新')
+    return flashRedirect(c, '/admin/departments', 'success', '部门已更新')
   }
 
   if (action === 'delete') {
@@ -294,14 +295,14 @@ export const POST = createRoute(requireAuth, requirePermission('org:department:m
     if (!dept) return c.text('部门不存在', 404)
     const children = db.select().from(schema.departments).where(eq(schema.departments.parentId, deptId)).all()
     if (children.length) {
-      return c.redirect('/admin/departments?flash=error:该部门下还有子部门，无法删除')
+      return flashRedirect(c, '/admin/departments', 'error', '该部门下还有子部门，无法删除')
     }
     const members = db.select().from(schema.users).where(eq(schema.users.departmentId, deptId)).all()
     if (members.length) {
-      return c.redirect('/admin/departments?flash=error:该部门仍有成员，无法删除')
+      return flashRedirect(c, '/admin/departments', 'error', '该部门仍有成员，无法删除')
     }
     db.delete(schema.departments).where(eq(schema.departments.id, deptId)).run()
-    return c.redirect('/admin/departments?flash=success:部门已删除')
+    return flashRedirect(c, '/admin/departments', 'success', '部门已删除')
   }
 
   return c.text('未知操作', 400)
